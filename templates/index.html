@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf_token" content="{{ csrf_token() }}">
+    <title>署名管理システム</title>
+    <!-- CSSライブラリ -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.quilljs.com/1.3.6/quill.snow.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- JavaScriptライブラリ（head内） -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<script>
+    const currentUser = {{ {
+        "employee_id": current_user.employee_id if current_user.is_authenticated and current_user.employee_id is not none else 1
+    } | tojson | safe }};
+</script>
+
+</head>
+<body>
+    <!-- トースト通知コンテナ -->
+    <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3"></div>
+
+<!-- サイドバー -->
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <h3>署名管理システム</h3>
+    </div>
+    <ul class="nav flex-column">
+        {% if user_role == 'admin' %}
+        <li class="nav-item">
+            <a class="nav-link" data-view="dashboard" href="#">ダッシュボード</a>
+        </li>
+        {% endif %}
+
+        <li class="nav-item">
+            <a class="nav-link" data-view="employee-portal" href="#">社員ポータル</a>
+        </li>
+
+        {% if user_role == 'admin' %}
+        <li class="nav-item">
+            <a class="nav-link" data-view="template-editor" href="#">テンプレート作成</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-view="campaign-manager" href="#">キャンペーン</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-view="analytics" href="#">効果測定</a>
+        </li>
+
+        {% endif %}
+
+        <!-- 🔓 これは全ロール共通で表示 -->
+        <li class="nav-item">
+            <a class="nav-link" data-view="profile-editor" href="#">プロフィール編集</a>
+        </li>
+
+        <li class="nav-item">
+            <meta name="csrf_token" content="{{ csrf_token() }}">
+            <a class="nav-link" href="#" id="logout-link">ログアウト</a>
+        </li>
+    </ul>
+</nav>
+
+
+<!-- 社員編集モーダル -->
+<div class="modal fade" id="editEmployeeModal" tabindex="-1" aria-labelledby="editEmployeeModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editEmployeeModalLabel">社員編集</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-employee-form">
+          <input type="hidden" id="edit-employee-id" name="id">
+          <input type="hidden" name="organization_id">
+          
+          <div class="form-group">
+            <label for="edit-name">名前</label>
+            <input type="text" id="edit-name" name="name" class="form-control" required>
+          </div>
+          
+          <div class="form-group mt-3">
+            <label for="edit-email">メール</label>
+            <input type="email" id="edit-email" name="email" class="form-control" required>
+          </div>
+          
+          <div class="form-group mt-3">
+            <label for="edit-department">部署</label>
+            <input type="text" id="edit-department" name="department" class="form-control">
+          </div>
+          
+          <div class="form-group mt-3">
+            <label for="edit-role">役割</label>
+            <select id="edit-role" name="role" class="form-control">
+              <option value="employee">社員</option>
+              <option value="admin">管理者</option>
+            </select>
+          </div>
+          
+          <button type="submit" class="btn btn-primary mt-3">保存</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+    <!-- トラッキングURLモーダル -->
+    <div class="modal fade" id="trackingUrlModal" tabindex="-1" aria-labelledby="trackingUrlModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="trackingUrlModalLabel">トラッキングリンク生成結果</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- エラーモーダル -->
+    <div class="modal fade" id="errorModal" tabindex="-1" aria-labelledby="errorModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="errorModalLabel">エラー</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+    <div id="profile-editor" class="content-section hidden">
+        <div class="container">
+            <h3>プロフィール編集</h3>
+            <form id="profile-form">
+<div class="mb-2">
+  <label for="password">パスワード変更</label>
+  <input type="password" name="password" id="password" class="form-control" placeholder="新しいパスワード">
+</div>
+
+<div class="mb-2">
+  <label for="password-confirm">パスワード変更 確認</label>
+  <input type="password" name="password_confirm" id="password-confirm" class="form-control" placeholder="もう一度入力">
+</div>
+                <div class="mb-2"><label>氏名</label><input name="name" class="form-control" required></div>
+                <div class="mb-2"><label>メール</label><input name="email" class="form-control" required></div>
+                <div class="mb-2"><label>部署</label><input name="department" class="form-control"></div>
+                <div class="mb-2"><label>役職</label><input name="role" class="form-control"></div>
+                <div class="mb-2"><label>電話番号</label><input name="phone" class="form-control"></div>
+                <div class="mb-2"><label>住所</label><input name="address" class="form-control"></div>
+                <div class="mb-2"><label>Webサイト</label><input name="website" class="form-control"></div>
+                <div class="mb-2"><label>LinkedIn</label><input name="linkedin" class="form-control"></div>
+
+                <button type="submit" class="btn btn-primary mt-2">保存</button>
+            </form>
+        </div>
+    </div>
+<!-- メインコンテンツ -->
+<div class="content" style="max-width: 100%; overflow-x: auto;">
+    <!-- ダッシュボード（管理者用） -->
+    {% if user_role == 'admin' %}
+    <div id="dashboard" class="content-section hidden">
+        <h2>ダッシュボード</h2>
+
+        <!-- 🔼 統計セクション（上に移動） -->
+<div class="row mt-4">
+  <div class="col-md-12">
+    <h3>統計</h3>
+    <div id="stats-content" class="d-flex gap-4"></div>
+  </div>
+</div>
+
+
+        <!-- テンプレートとキャンペーン -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <h3>テンプレート</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="template-list">
+                        <thead>
+                            <tr>
+                                <th>名前</th>
+                                <th>作成日</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for template in templates %}
+                            <tr>
+                                <td>{{ template.name }}</td>
+                                <td>{{ template.created_at | strftime('%Y/%m/%d %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary edit-template" data-id="{{ template.id }}">編集</button>
+                                    <button class="btn btn-sm btn-danger delete-template" data-id="{{ template.id }}">削除</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h3>キャンペーン</h3>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="campaign-list">
+                        <thead>
+                            <tr>
+                                <th>テンプレート</th>
+                                <th>部署</th>
+                                <th>開始日</th>
+                                <th>終了日</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for campaign in campaigns %}
+                            <tr>
+                                <td>
+                                    {% set names = [] %}
+                                    {% for tid in (campaign.template_ids | default("[]") | from_json) %}
+                                        {% set matched = templates | selectattr('id', 'equalto', tid | int) | list %}
+                                        {% if matched and matched[0] and 'name' in matched[0] %}
+                                            {% set names = names + [matched[0].name] %}
+                                        {% else %}
+                                            {% set names = names + ['不明'] %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    {{ names | join(', ') }}
+                                </td>
+                                <td>{{ campaign.department or '全て' }}</td>
+                                <td>{{ campaign.start_date | strftime('%Y/%m/%d %H:%M') }}</td>
+                                <td>{{ campaign.end_date | strftime('%Y/%m/%d %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary edit-campaign" data-id="{{ campaign.id }}">編集</button>
+                                    <button class="btn btn-sm btn-danger delete-campaign" data-id="{{ campaign.id }}">削除</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 社員管理セクション -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h3>社員管理</h3>
+                <form id="employee-filter-form" class="mb-3">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <input type="text" id="filter-name" class="form-control" placeholder="名前">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" id="filter-email" class="form-control" placeholder="メール">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" id="filter-department" class="form-control" placeholder="部署">
+                        </div>
+                        <div class="col-md-3">
+                            <select id="filter-role" class="form-control">
+                                <option value="">役割</option>
+                                <option value="employee">社員</option>
+                                <option value="admin">管理者</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <input type="text" id="search-query" class="form-control" placeholder="検索">
+                        </div>
+                        <div class="col-md-6">
+                            <button type="submit" class="btn btn-primary">フィルタ</button>
+                            <button type="button" id="reset-filters" class="btn btn-secondary">リセット</button>
+                        </div>
+                    </div>
+                </form>
+                <div class="table-responsive">
+                    <table class="table table-striped" id="employee-list">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">名前 <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="email">メール <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="department">部署 <i class="fas fa-sort"></i></th>
+                                <th class="sortable" data-sort="role">役割 <i class="fas fa-sort"></i></th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <nav>
+                    <ul class="pagination" id="employee-pagination"></ul>
+                </nav>
+                <h4>社員インポート</h4>
+                <form id="employee-import-form" enctype="multipart/form-data">
+                    <div class="input-group mb-3">
+                        <input type="file" class="form-control" name="file" accept=".csv">
+                        <button type="submit" class="btn btn-primary">インポート</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 社員ポータル -->
+    <div id="employee-portal" class="content-section hidden" data-employee-id="{{ employee_id }}" data-template-id="{{ assigned_template_id }}">
+        <div class="container">
+            <!-- デバッグ用（本番では削除可） -->
+            <p>employee_id: {{ employee_id }}</p>
+            <p>assigned_template_id: {{ assigned_template_id }}</p>
+            <h2>社員ポータル</h2>
+            <div id="signature-error" class="alert alert-danger hidden"></div>
+            <h3>HTML署名</h3>
+            <div id="html-signature" class="border p-3 mb-3 noselect"></div>
+            <button class="btn btn-primary copy-btn" data-target="#html-signature">コピー</button>
+            <h3>テキスト署名</h3>
+            <pre id="text-signature" class="border p-3 mb-3 noselect"></pre>
+            <button class="btn btn-primary copy-btn" data-target="#text-signature">コピー</button>
+        </div>
+    </div>
+
+    <!-- テンプレートエディタ（管理者用） -->
+    {% if user_role == 'admin' %}
+    <div id="template-editor" class="content-section hidden">
+        <div class="container">
+            <h2>テンプレートエディタ</h2>
+            <form id="template-form" data-template-id="">
+                <div class="form-group">
+                    <label for="template-name">テンプレート名</label>
+                    <input type="text" id="template-name" class="form-control" required>
+                </div>
+                <div class="form-group mt-3">
+                    <label>HTMLコンテンツ</label>
+                    <div id="quill-editor" class="quill-editor"></div>
+                    <textarea id="html-content" class="hidden"></textarea>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="text-content">テキストコンテンツ</label>
+                    <textarea id="text-content" class="form-control"></textarea>
+                    <div id="text-preview" class="mt-2"></div>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="banner-url">バナーURL</label>
+                    <input type="url" id="banner-url" class="form-control">
+                </div>
+                <div class="mt-3" id="placeholder-buttons"></div>
+                <div class="mt-3">
+                    <button type="button" id="generate-track-btn" class="btn btn-outline-success">トラッキングリンク生成</button>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-outline-primary device-preview-btn" data-device="desktop">デスクトップ</button>
+                    <button type="button" class="btn btn-outline-primary device-preview-btn" data-device="tablet">タブレット</button>
+                    <button type="button" class="btn btn-outline-primary device-preview-btn" data-device="mobile">モバイル</button>
+                </div>
+                <div class="mt-3">
+                    <iframe id="template-preview" class="template-preview" style="max-width: 100%;"></iframe>
+                </div>
+                <div id="tracking-url-container" class="mt-3"></div>
+                <button type="submit" class="btn btn-primary mt-3">保存</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- キャンペーン管理（管理者用） -->
+    <div id="campaign-manager" class="content-section hidden">
+        <div class="container">
+            <h2>キャンペーン管理</h2>
+            <form id="campaign-form">
+                <div class="form-group">
+                    <label for="template-ids">テンプレート</label>
+                    <select id="template-ids" class="form-control" multiple required></select>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="department">部署</label>
+                    <select id="department" class="form-control">
+                        <option value="">選択してください</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept }}">{{ dept }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="date-range">日付範囲</label>
+                    <input type="text" id="date-range" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">キャンペーン作成</button>
+            </form>
+        </div>
+    </div>
+
+<!-- 効果測定（管理者用） -->
+<div id="analytics" class="content-section hidden">
+  <div class="container">
+    <h2>効果測定</h2>
+
+    <div class="row my-3">
+      <div class="col-md-3">
+        <label for="filter-start-date">開始日</label>
+        <input type="text" id="filter-start-date" class="form-control" placeholder="YYYY-MM-DD">
+      </div>
+      <div class="col-md-3">
+        <label for="filter-end-date">終了日</label>
+        <input type="text" id="filter-end-date" class="form-control" placeholder="YYYY-MM-DD">
+      </div>
+      <div class="col-md-3 align-self-end">
+        <button id="apply-date-filter" class="btn btn-primary">絞り込み</button>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-analytics-tab="abtest" href="#">A/Bテスト</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-analytics-tab="department" href="#">部署別</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-analytics-tab="employee" href="#">社員別</a>
+      </li>
+    </ul>
+
+    <!-- ✅ A/Bテスト -->
+    <div id="abtest-tab" class="analytics-tab-content">
+      <h3>勝利バナー: <span id="winner-banner"></span></h3>
+
+      <p id="no-abtest-data" class="text-muted text-center my-3" style="display: none;">
+        該当するA/Bテストデータがありません。
+      </p>
+
+      <div class="table-responsive">
+        <table class="table table-striped" id="ab-test-table">
+          <thead>
+            <tr>
+              <th>テンプレート</th>
+              <th>クリック数</th>
+              <th>CTR</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3>時間帯分析</h3>
+      <p id="no-timeband-data" class="text-muted text-center my-3" style="display: none;">
+        時間帯データが存在しません。
+      </p>
+      <canvas id="timebandChart" width="400" height="200"></canvas>
+    </div>
+
+    <!-- ✅ 部署別 -->
+    <div id="department-tab" class="analytics-tab-content hidden">
+      <h3>部署別クリック数</h3>
+
+      <p id="no-department-data" class="text-muted text-center my-3" style="display: none;">
+        該当する部署別データがありません。
+      </p>
+
+      <div class="table-responsive">
+        <table class="table table-striped" id="department-table">
+          <thead>
+            <tr>
+              <th>部署</th>
+              <th>クリック数</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <canvas id="departmentChart" width="400" height="200"></canvas>
+    </div>
+
+    <!-- ✅ 社員別 -->
+<div id="employee-tab" class="analytics-tab-content hidden">
+  <h3>社員別クリック数</h3>
+
+  <p id="no-employee-data" class="text-muted text-center my-3" style="display: none;">
+    該当する社員別データがありません。
+  </p>
+
+  <!-- ✅ ← この wrapper を追加 -->
+  <div id="employee-table-wrapper">
+    <div class="table-responsive">
+      <table class="table table-striped" id="employee-analytics-table">
+        <thead>
+          <tr>
+            <th>社員</th>
+            <th>部署</th>
+            <th>クリック数</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <canvas id="employeeChart" width="400" height="200"></canvas>
+  </div>
+</div>
+
+
+
+
+    <!-- 署名履歴（管理者用） -->
+    <div id="signature-history" class="content-section hidden">
+        <div class="container">
+            <h2>署名履歴</h2>
+            <form id="history-filter-form">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="filter-employee">社員</label>
+                        <select id="filter-employee" class="form-control">
+                            <option value="">全て</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter-start-date">開始日</label>
+                        <input type="date" id="filter-start-date" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filter-end-date">終了日</label>
+                        <input type="date" id="filter-end-date" class="form-control">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3">フィルタ</button>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-striped mt-3" id="history-table">
+                    <thead>
+                        <tr>
+                            <th>社員</th>
+                            <th>テンプレート</th>
+                            <th>適用日時</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+
+
+
+<!-- JavaScript（body末尾） -->
+<script src="{{ url_for('static', filename='js/script.js') }}?v=1.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/js/all.min.js"></script>
+</body>
+</html>

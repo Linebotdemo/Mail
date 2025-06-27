@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CSSセレクタ抽出ツール</title>
+    <style>
+        *:hover {
+            outline: 2px solid red !important;
+            cursor: crosshair !important;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="preview" src="{{ url }}" style="width:100%; height:100vh; border:none;"></iframe>
+
+    <script>
+        const iframe = document.getElementById("preview");
+        iframe.onload = () => {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.body.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const path = [];
+                let el = e.target;
+                while (el && el.nodeType === 1 && el !== doc.body) {
+                    let selector = el.tagName.toLowerCase();
+                    if (el.id) {
+                        selector += `#${el.id}`;
+                        path.unshift(selector);
+                        break;
+                    } else {
+                        let sibIndex = 1;
+                        let sib = el;
+                        while ((sib = sib.previousElementSibling) != null) {
+                            if (sib.tagName === el.tagName) sibIndex++;
+                        }
+                        selector += `:nth-of-type(${sibIndex})`;
+                    }
+                    path.unshift(selector);
+                    el = el.parentElement;
+                }
+                const finalSelector = path.join(' > ');
+                window.opener.postMessage({ type: 'selector', selector: finalSelector }, window.location.origin);
+                alert(`セレクタを送信しました: ${finalSelector}`);
+            }, true);
+        };
+    </script>
+</body>
+</html>
