@@ -653,7 +653,7 @@ def admin_employee_view(employee_id):
 
 @app.route('/portal')
 @login_required
-@org_scoped_view
+
 def portal_legacy():
     try:
         db = get_db()
