@@ -2197,7 +2197,6 @@ def new_template():
 
 @app.route('/api/analytics/abtest_summary', methods=['GET'])
 @login_required
-
 def api_get_abtest_summary():
     db = get_db()
     try:
@@ -2212,10 +2211,11 @@ def api_get_abtest_summary():
             FROM templates t
             LEFT JOIN tracking tr ON tr.template_id = t.id
             LEFT JOIN analytics a ON a.track_id = tr.track_id
+            WHERE t.organization_id = ?
             GROUP BY t.id, t.name
             ORDER BY clicks DESC;
         '''
-        cursor.execute(query)
+        cursor.execute(query, (current_user.organization_id,))
         rows = [dict(row) for row in cursor.fetchall()]
         return jsonify({'success': True, 'data': rows})
     except Exception as e:
@@ -2225,12 +2225,9 @@ def api_get_abtest_summary():
         db.close()
 
 
-
 @app.route('/api/analytics/department', methods=['GET'])
 @login_required
-
 def api_get_department_analytics():
-    """部署ごとのアナリティクスを取得"""
     db = get_db()
     try:
         cursor = db.cursor()
@@ -2238,8 +2235,9 @@ def api_get_department_analytics():
             SELECT e.department, COUNT(a.id) as clicks
             FROM analytics a
             LEFT JOIN employees e ON a.employee_id = e.id
+            WHERE e.organization_id = ?
             GROUP BY e.department
-        ''')
+        ''', (current_user.organization_id,))
         data = [dict(row) for row in cursor.fetchall()]
         logging.info(f'✅ Retrieved {len(data)} department analytics records')
         return jsonify({'success': True, 'data': data})
@@ -2263,7 +2261,8 @@ def api_get_timeband():
         query = '''
             SELECT strftime('%H:00', datetime(clicked_at, '+9 hours')) as timeband, COUNT(*) as clicks
             FROM analytics
-            WHERE 1=1
+            JOIN employees e ON analytics.employee_id = e.id
+            WHERE e.organization_id = ?
         '''
         params = []
         
@@ -2315,14 +2314,10 @@ def register():
 
 @app.route('/api/statistics', methods=['GET'])
 @login_required
-
 def api_get_statistics():
-    """統計データを取得（企業ごとに制限）"""
     db = get_db()
     try:
         cursor = db.cursor()
-        org_id = current_user.organization_id  # ← 🔒 ここ重要
-
         cursor.execute('''
             SELECT t.id as tid, 
                    (SELECT COUNT(*) FROM analytics a2 WHERE a2.track_id = t.track_id) as clicks,
@@ -2330,17 +2325,14 @@ def api_get_statistics():
             FROM tracking t
             LEFT JOIN employees e ON t.employee_id = e.id
             WHERE e.organization_id = ?
-        ''', (org_id,))
-        
+        ''', (current_user.organization_id,))
         data = [dict(row) for row in cursor.fetchall()]
-        logging.info(f'✅ Retrieved statistics: {len(data)} records (org_id={org_id})')
+        logging.info(f'✅ Retrieved statistics: {len(data)} records')
         return jsonify(data)
-
     except sqlite3.Error as e:
         logging.error(f'❌ Get statistics error: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
-        cursor.close()
         db.close()
 
 
