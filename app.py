@@ -1432,7 +1432,6 @@ def api_get_departments():
 
 @app.route('/api/signature_history', methods=['GET'])
 @login_required
-
 def api_get_signature_history():
     """署名履歴を取得"""
     db = get_db()
@@ -1443,12 +1442,14 @@ def api_get_signature_history():
             FROM signature_history sh
             JOIN employees e ON sh.employee_id = e.id
             JOIN templates t ON sh.template_id = t.id
-            WHERE 1=1
+            WHERE e.organization_id = ?
         '''
-        params = []
+        params = [current_user.organization_id]
+
         employee_id = request.args.get('employee_id')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        
         if employee_id:
             query += ' AND sh.employee_id = ?'
             params.append(employee_id)
@@ -1458,6 +1459,7 @@ def api_get_signature_history():
         if end_date:
             query += ' AND sh.applied_at <= ?'
             params.append(end_date)
+
         cursor.execute(query, params)
         history = [dict(row) for row in cursor.fetchall()]
         logging.info(f'✅ Retrieved {len(history)} signature history records')
@@ -1467,6 +1469,7 @@ def api_get_signature_history():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
 
 @app.route('/api/signature', methods=['GET'])
 @login_required
@@ -2088,7 +2091,6 @@ def api_get_analytics():
 
 @app.route("/api/employee-analytics")
 @login_required
-
 def employee_analytics():
     try:
         start_date = request.args.get("start_date")
@@ -2096,6 +2098,7 @@ def employee_analytics():
         logger.info("🧠 /api/employee-analytics start=%s end=%s", start_date, end_date)
         if not start_date or not end_date:
             return jsonify([])
+
         db = get_db()
         cursor = db.cursor()
         query = """
@@ -2105,10 +2108,11 @@ def employee_analytics():
                    COUNT(*) AS clicks
             FROM analytics a
             JOIN employees e ON a.employee_id = e.id
-            WHERE DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
+            WHERE e.organization_id = ?
+              AND DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
             GROUP BY e.id
         """
-        cursor.execute(query, (start_date, end_date))
+        cursor.execute(query, (current_user.organization_id, start_date, end_date))
         rows = cursor.fetchall()
         result = [{
             "employee_id": row["employee_id"],
@@ -2122,9 +2126,10 @@ def employee_analytics():
         logger.exception("❌ /api/employee-analytics failed:")
         return jsonify({"error": "Internal server error"}), 500
 
+
+
 @app.route("/api/analytics/department")
 @login_required
-
 def department_analytics():
     try:
         start_date = request.args.get("start_date")
@@ -2132,6 +2137,7 @@ def department_analytics():
         logger.info("🧠 /api/analytics/department start=%s end=%s", start_date, end_date)
         if not start_date or not end_date:
             return jsonify([])
+
         db = get_db()
         cursor = db.cursor()
         query = """
@@ -2139,10 +2145,11 @@ def department_analytics():
                    COUNT(*) AS clicks
             FROM analytics a
             JOIN employees e ON a.employee_id = e.id
-            WHERE DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
+            WHERE e.organization_id = ?
+              AND DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
             GROUP BY e.department
         """
-        cursor.execute(query, (start_date, end_date))
+        cursor.execute(query, (current_user.organization_id, start_date, end_date))
         rows = cursor.fetchall()
         result = [{
             "department": row["department"],
@@ -2153,6 +2160,7 @@ def department_analytics():
     except Exception as e:
         logger.exception("❌ /api/analytics/department failed:")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 
