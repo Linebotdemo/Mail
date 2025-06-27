@@ -552,7 +552,6 @@ def get_templates():
 # ルート
 @app.route("/")
 @login_required
-@org_scoped_view
 def index():
     user = current_user
     employee_id = ""
@@ -599,7 +598,6 @@ def index():
 
 @app.route('/admin/preview/<int:employee_id>')
 @login_required
-@org_scoped_view
 def admin_preview(employee_id):
     db = get_db()
     cursor = db.cursor()
@@ -622,7 +620,6 @@ def admin_preview(employee_id):
 
 @app.route("/admin/employee/<int:employee_id>")
 @login_required
-@org_scoped_view
 def admin_employee_view(employee_id):
     if current_user.role != "admin":
         return redirect("/portal")
@@ -653,7 +650,6 @@ def admin_employee_view(employee_id):
 
 @app.route('/portal')
 @login_required
-
 def portal_legacy():
     try:
         db = get_db()
@@ -772,7 +768,6 @@ def login():
 @csrf.exempt  # ← CSRF保護をこのエンドポイントだけ無効化
 @app.route('/api/logout', methods=['POST'])
 @login_required
-@org_scoped_view
 def logout():
     user_email = current_user.email
     logout_user()
@@ -1989,7 +1984,6 @@ def api_track_click(track_id):
 
 @app.route('/api/save_template', methods=['POST'])
 @login_required
-@org_scoped_view
 def save_template():
     data = request.get_json()
     html = data.get('html', '')
@@ -2036,7 +2030,6 @@ def debug_employee_clicks():
 @app.route('/api/analytics', methods=['GET'])
 
 @login_required
-@org_scoped_view
 def api_get_analytics():
     db = get_db()
     try:
