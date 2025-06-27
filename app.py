@@ -357,11 +357,23 @@ def replace_links_with_tracking(html, employee_id, template_id):
 
 
 
+
+def org_scoped_view(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return jsonify({'success': False, 'message': 'ログインが必要です'}), 401
+        g.organization_id = current_user.organization_id
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 app.jinja_env.filters['strftime'] = format_datetime
 app.jinja_env.filters['from_json'] = from_json
 
 @app.route('/api/me', methods=['GET', 'POST'])
 @login_required
+@org_scoped_view
 def me():
     if request.method == 'GET':
         return jsonify(success=True, user={
@@ -380,6 +392,7 @@ def me():
 
 @app.route('/api/profile', methods=['POST'])
 @login_required
+@org_scoped_view
 def update_profile():
     data = request.get_json()
     app.logger.info(f'🟡 受信データ: {data}')
@@ -449,6 +462,7 @@ def update_profile():
 
 @app.route('/api/profile', methods=['GET'])
 @login_required
+@org_scoped_view
 def get_profile():
     try:
         app.logger.info('✅ /api/profile route loaded')
@@ -828,6 +842,7 @@ def get_employees(page=1, per_page=15, filter_name=None, filter_email=None, filt
 
 @app.route('/api/employees', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_employees():
     """社員リストを API で取得"""
     try:
@@ -851,6 +866,7 @@ def api_get_employees():
 
 @app.route('/api/employees/<int:id>', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_employee(id):
     """特定の社員情報を取得"""
     db = get_db()
@@ -871,6 +887,7 @@ def api_get_employee(id):
 
 @app.route('/api/employees/<int:employee_id>', methods=['POST'])
 @csrf.exempt  # JSから送る場合は手動でCSRFトークン検証した方が安定する
+@org_scoped_view
 def update_employee(employee_id):
     try:
         # メタタグから取得している X-CSRF-Token を検証
@@ -904,6 +921,7 @@ def update_employee(employee_id):
 @app.route('/api/employees/<int:id>', methods=['PUT'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_update_employee(id):
     """社員情報を更新"""
     data = request.get_json()
@@ -930,6 +948,7 @@ def api_update_employee(id):
 @app.route('/api/employees/<int:id>', methods=['DELETE'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_delete_employee(id):
     """社員を削除"""
     db = get_db()
@@ -952,6 +971,7 @@ def api_delete_employee(id):
 
 @app.route("/api/campaigns/<int:id>", methods=["DELETE"])
 @login_required
+@org_scoped_view
 def delete_campaign(id):
     db = get_db()
     cursor = db.cursor()
@@ -961,6 +981,7 @@ def delete_campaign(id):
 
 @app.route("/api/campaigns/<int:id>", methods=["PUT"])
 @login_required
+@org_scoped_view
 def update_campaign(id):
     data = request.get_json()
     template_ids = data.get("template_ids", [])
@@ -982,6 +1003,7 @@ def update_campaign(id):
 @app.route('/api/employees/import', methods=['POST'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_import_employees():
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': 'ファイルが選択されていません。'}), 400
@@ -1045,6 +1067,7 @@ def api_import_employees():
 @app.route('/api/admin/assign-signatures', methods=['POST'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_assign_signatures():
     """部署ごとにテンプレートを社員に自動割り当て"""
     try:
@@ -1109,6 +1132,7 @@ def api_assign_signatures():
 
 @app.route('/api/templates', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_templates():
     """テンプレートリストを取得"""
     db = get_db()
@@ -1127,6 +1151,7 @@ def api_get_templates():
 @app.route('/api/templates', methods=['POST'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_create_template():
     """新しいテンプレートを作成（仮トラッキングリンクも処理）"""
     data = request.get_json()
@@ -1175,6 +1200,7 @@ def api_create_template():
 
 @app.route('/api/templates/<int:id>', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_template(id):
     """特定のテンプレートを取得"""
     db = get_db()
@@ -1196,6 +1222,7 @@ def api_get_template(id):
 @app.route('/api/templates/<int:id>', methods=['PUT'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_update_template(id):
     """テンプレートを更新"""
     data = request.get_json()
@@ -1222,6 +1249,7 @@ def api_update_template(id):
 @app.route('/api/templates/<int:id>', methods=['DELETE'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_delete_template(id):
     """テンプレートを削除し、キャンペーンの template_ids からも除外"""
     db = get_db()
@@ -1267,6 +1295,7 @@ def api_delete_template(id):
 @app.route('/api/campaigns', methods=['GET'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_get_campaigns():
     """キャンペーン一覧（テンプレート名付き）"""
     db = get_db()
@@ -1333,6 +1362,7 @@ def check_track_exists(track_id):
 @app.route('/api/campaigns', methods=['POST'])
 @login_required
 @admin_required
+@org_scoped_view
 def api_create_campaign():
     """新しいキャンペーンを作成し、署名を従業員に割り当て"""
     data = request.get_json()
@@ -1384,6 +1414,7 @@ def api_create_campaign():
 
 @app.route('/api/departments', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_departments():
     """部署リストを取得"""
     db = get_db()
@@ -1401,6 +1432,7 @@ def api_get_departments():
 
 @app.route('/api/signature_history', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_signature_history():
     """署名履歴を取得"""
     db = get_db()
@@ -1438,6 +1470,7 @@ def api_get_signature_history():
 
 @app.route('/api/signature', methods=['GET'])
 @login_required
+@org_scoped_view
 def get_signature():
     app.logger.warning('⚠️ Deprecated endpoint /api/signature called, using /api/employee/signature logic')
     try:
@@ -1581,6 +1614,7 @@ csrf.exempt(create_admin)
 
 @app.route('/api/companies', methods=['GET'])
 @login_required
+@org_scoped_view
 def get_companies():
     if current_user.role != 'admin':
         return jsonify({'success': False, 'message': '権限がありません'}), 403
@@ -1623,6 +1657,7 @@ def get_companies():
 
 @app.route('/api/employee/signature', methods=['GET'])
 @login_required
+@org_scoped_view
 def get_employee_signature():
     try:
         conn = get_db_connection()
@@ -1703,6 +1738,7 @@ def get_employee_signature():
 
 @app.route('/api/employee/signature', methods=['POST'])
 @login_required
+@org_scoped_view
 def apply_signature():
     data = request.get_json()
     template_id = data.get('template_id')
@@ -1769,6 +1805,7 @@ def apply_signature():
 
 @app.route('/api/signature')
 @login_required
+@org_scoped_view
 def deprecated_signature():
     import traceback
     try:
@@ -1785,6 +1822,7 @@ def deprecated_signature():
 
 @app.route('/api/render_signature', methods=['POST'])
 @login_required
+@org_scoped_view
 @employee_required
 def render_signature_api():
     try:
@@ -1840,6 +1878,7 @@ def render_signature_api():
 
 @app.route('/api/generate_track', methods=['POST'])
 @login_required
+@org_scoped_view
 def generate_track():
     try:
         data = request.get_json()
@@ -1989,6 +2028,7 @@ def debug_employee_clicks():
 
 
 @app.route('/api/analytics', methods=['GET'])
+@org_scoped_view
 @login_required
 def api_get_analytics():
     db = get_db()
@@ -2048,6 +2088,7 @@ def api_get_analytics():
 
 @app.route("/api/employee-analytics")
 @login_required
+@org_scoped_view
 def employee_analytics():
     try:
         start_date = request.args.get("start_date")
@@ -2083,6 +2124,7 @@ def employee_analytics():
 
 @app.route("/api/analytics/department")
 @login_required
+@org_scoped_view
 def department_analytics():
     try:
         start_date = request.args.get("start_date")
@@ -2120,6 +2162,7 @@ def department_analytics():
 
 @app.route("/template_editor/<int:template_id>")
 @login_required
+@org_scoped_view
 def template_editor(template_id):
     db = get_db()
     try:
@@ -2135,6 +2178,7 @@ def template_editor(template_id):
 
 @app.route("/template_editor")
 @login_required
+@org_scoped_view
 def new_template():
     empty_template = {
         "id": "",
@@ -2153,6 +2197,7 @@ def new_template():
 
 @app.route('/api/analytics/abtest_summary', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_abtest_summary():
     db = get_db()
     try:
@@ -2183,6 +2228,7 @@ def api_get_abtest_summary():
 
 @app.route('/api/analytics/department', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_department_analytics():
     """部署ごとのアナリティクスを取得"""
     db = get_db()
@@ -2206,6 +2252,7 @@ def api_get_department_analytics():
 
 @app.route('/api/timeband', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_timeband():
     db = get_db()
     try:
@@ -2268,27 +2315,34 @@ def register():
 
 @app.route('/api/statistics', methods=['GET'])
 @login_required
+@org_scoped_view
 def api_get_statistics():
-    """統計データを取得"""
+    """統計データを取得（企業ごとに制限）"""
     db = get_db()
     try:
         cursor = db.cursor()
+        org_id = current_user.organization_id  # ← 🔒 ここ重要
+
         cursor.execute('''
             SELECT t.id as tid, 
                    (SELECT COUNT(*) FROM analytics a2 WHERE a2.track_id = t.track_id) as clicks,
                    e.name as employee_name
             FROM tracking t
             LEFT JOIN employees e ON t.employee_id = e.id
-        ''')
+            WHERE e.organization_id = ?
+        ''', (org_id,))
+        
         data = [dict(row) for row in cursor.fetchall()]
-        logging.info(f'✅ Retrieved statistics: {len(data)} records')
+        logging.info(f'✅ Retrieved statistics: {len(data)} records (org_id={org_id})')
         return jsonify(data)
+
     except sqlite3.Error as e:
         logging.error(f'❌ Get statistics error: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         cursor.close()
         db.close()
+
 
 
 
