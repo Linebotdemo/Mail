@@ -1926,6 +1926,43 @@ def api_get_statistics():
 def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
 
+@app.route('/debug/export')
+@login_required
+@admin_required
+def debug_export():
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        data = {}
+        for table in ['users', 'employees', 'templates', 'campaigns', 'tracking']:
+            cursor.execute(f'SELECT * FROM {table}')
+            data[table] = [dict(row) for row in cursor.fetchall()]
+        return jsonify(data)
+    finally:
+        db.close()
+
+
+@app.route('/debug/fix-org', methods=['POST'])
+@login_required
+@admin_required
+def debug_fix_org():
+    org_id = current_user.organization_id
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        for table in ['users', 'employees', 'templates', 'campaigns', 'tracking',
+                      'signature_history', 'signature_assignments', 'analytics',
+                      'signature_templates', 'tracking_links']:
+            cursor.execute(f'UPDATE {table} SET organization_id = ? WHERE organization_id IS NULL', (org_id,))
+        db.commit()
+        return jsonify({'success': True, 'message': f'organization_id={org_id} に一括補正しました'})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
 # アプリケーションの開始
 if __name__ == '__main__':
     init_db()
