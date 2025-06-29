@@ -446,41 +446,47 @@ def internal_server_error(e):
     return jsonify({'error': 'Internal server error'}), 500
 
 # ルート定義
-@app.route('/')
+@app.route("/")
 @login_required
-@org_scoped_view
 def index():
     user = current_user
-    employee_id = ''
-    template_id = ''
-    logger.debug('✅ ログインユーザー: %s (%s)', user.email, user.role)
-    if user.role == 'employee':
+    employee_id = ""
+    template_id = ""
+
+    logger.debug("✅ ログインユーザー: %s (%s)", user.email, user.role)
+
+    if user.role == "社員":
         db = get_db()
-        try:
-            cursor = db.cursor()
-            cursor.execute('SELECT id FROM employees WHERE email = ? AND organization_id = ?', 
-                          (user.email, current_user.organization_id))
-            row = cursor.fetchone()
-            if row:
-                employee_id = row['id']
-                logger.debug('📌 employee_id: %s', employee_id)
-                cursor.execute('''
-                    SELECT template_id FROM signature_assignments
-                    WHERE employee_id = ? AND organization_id = ?
-                    ORDER BY assigned_at DESC
-                    LIMIT 1
-                ''', (employee_id, current_user.organization_id))
-                assigned = cursor.fetchone()
-                template_id = assigned['template_id'] if assigned else ''
-                logger.debug('📌 template_id: %s', template_id)
-        finally:
-            db.close()
+        cursor = db.cursor()
+
+        cursor.execute("SELECT id FROM employees WHERE email = ?", (user.email,))
+        row = cursor.fetchone()
+        logger.debug("📌 employees row: %s", row)
+
+        if row:
+            employee_id = row["id"]
+            logger.debug("📌 employee_id: %s", employee_id)
+
+            cursor.execute("""
+                SELECT template_id FROM signature_assignments
+                WHERE employee_id = ?
+                ORDER BY assigned_at DESC
+                LIMIT 1
+            """, (employee_id,))
+            assigned = cursor.fetchone()
+            logger.debug("📌 assigned row: %s", assigned)
+
+            template_id = assigned["template_id"] if assigned else ""
+            logger.debug("📌 template_id: %s", template_id)
+
+        db.close()
+
     return render_template(
-        'index.html',
+        "index.html",
         user_role=user.role,
         employee_id=employee_id,
         assigned_template_id=template_id,
-        initial_view='employee-portal' if user.role == 'employee' else 'admin-dashboard',
+        initial_view="employee-portal" if user.role == "社員" else "admin-dashboard",
         campaigns=get_campaigns(),
         templates=get_templates()
     )
@@ -1355,47 +1361,69 @@ def api_get_signature_history():
 
 @app.route('/api/employee/signature', methods=['GET'])
 @login_required
-@org_scoped_view
+
 def get_employee_signature():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        # STEP 1: ログイン中の社員ID確認
         employee_id = current_user.employee_id or current_user.id
-        cursor.execute('''
+        app.logger.debug(f'👤 employee_id: {employee_id}')
+
+        # STEP 2: 割り当てられたテンプレート取得
+        cursor.execute("""
             SELECT t.id AS template_id, t.html_content, t.text_content, t.banner_url
             FROM templates t
             JOIN signature_assignments sa ON t.id = sa.template_id
-            WHERE sa.employee_id = ? AND t.organization_id = ? AND sa.organization_id = ?
+            WHERE sa.employee_id = ?
             ORDER BY COALESCE(sa.applied_at, sa.assigned_at) DESC
             LIMIT 1
-        ''', (employee_id, current_user.organization_id, current_user.organization_id))
+        """, (employee_id,))
         signature = cursor.fetchone()
+
         if not signature:
             app.logger.warning(f'⚠️ No signature found for employee_id: {employee_id}')
             return jsonify({'success': False, 'message': '署名が見つかりませんでした'}), 404
-        cursor.execute('SELECT * FROM employees WHERE id = ? AND organization_id = ?', 
-                      (employee_id, current_user.organization_id))
+
+        app.logger.debug(f'📝 Signature template found: {signature["template_id"]}')
+
+        # STEP 3: 該当社員情報を取得
+        cursor.execute("SELECT * FROM employees WHERE id = ?", (employee_id,))
         employee = cursor.fetchone()
+
         if not employee:
             app.logger.warning(f'❌ No employee record found for ID: {employee_id}')
             return jsonify({'success': False, 'message': '社員情報が見つかりませんでした'}), 404
-        cursor.execute('SELECT name FROM organizations WHERE id = ?', (employee['organization_id'],))
+
+        # ✅ 会社名を取得
+        cursor.execute("SELECT name FROM organizations WHERE id = ?", (employee["organization_id"],))
         org = cursor.fetchone()
-        company_name = org['name'] if org else '未登録'
+        company_name = org["name"] if org else "未登録"
+
+        # STEP 4: 埋め込み変数の中身確認
         variables = {
-            'name': employee['name'],
-            'email': employee['email'],
-            'role': employee['role'],
-            'department': employee['department'],
-            'company': company_name,
-            'phone': employee['phone'] if employee['phone'] else '未登録',
-            'address': employee['address'] if employee['address'] else '未登録',
-            'website': employee['website'] if employee['website'] else '未登録',
-            'linkedin': employee['linkedin'] if employee['linkedin'] else '未登録',
-            'banner_url': signature['banner_url'] if signature['banner_url'] else '未登録'
+            "name": employee["name"],
+            "email": employee["email"],
+            "role": employee["role"],
+            "department": employee["department"],
+            "company": company_name,
+            "phone": employee["phone"] if employee["phone"] else "未登録",
+            "address": employee["address"] if employee["address"] else "未登録",
+            "website": employee["website"] if employee["website"] else "未登録",
+            "linkedin": employee["linkedin"] if employee["linkedin"] else "未登録",
+            "banner_url": signature["banner_url"] if signature["banner_url"] else "未登録"
         }
+
+        app.logger.debug(f'📦 Template variables: {variables}')
+
+        # STEP 5: HTML差し込み前後の内容確認
         rendered_html = render_signature_template(signature['html_content'], variables)
-        final_html = replace_links_with_tracking(rendered_html, employee['id'], signature['template_id'])
+        app.logger.debug(f'🧾 Rendered HTML: {rendered_html}')
+
+        final_html = replace_links_with_tracking(rendered_html, employee["id"], signature["template_id"])
+        app.logger.debug(f'✅ Final HTML with tracking: {final_html}')
+
         return jsonify({
             'success': True,
             'signature': {
@@ -1403,6 +1431,7 @@ def get_employee_signature():
                 'text_content': signature['text_content']
             }
         })
+
     except Exception as e:
         app.logger.error(f'❌ Error in /api/employee/signature: {str(e)}')
         return jsonify({'success': False, 'message': f'サーバーエラー: {str(e)}'}), 500
@@ -1411,53 +1440,58 @@ def get_employee_signature():
 
 @app.route('/api/employee/signature', methods=['POST'])
 @login_required
-@org_scoped_view
+
 def apply_signature():
-    try:
-        csrf_token = request.headers.get('X-CSRF-Token')
-        validate_csrf(csrf_token)
-    except CSRFError:
-        return jsonify({'success': False, 'message': 'CSRFトークンが無効です'}), 400
     data = request.get_json()
     template_id = data.get('template_id')
+
     if not template_id:
         return jsonify({'success': False, 'message': 'テンプレートIDが必要です'}), 400
+
     db = get_db()
     try:
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM templates WHERE id = ? AND organization_id = ?', 
-                      (template_id, current_user.organization_id))
+
+        # テンプレート取得
+        cursor.execute('SELECT * FROM templates WHERE id = ?', (template_id,))
         template = cursor.fetchone()
         if not template:
             return jsonify({'success': False, 'message': 'テンプレートが存在しません'}), 404
-        cursor.execute('SELECT * FROM employees WHERE id = ? AND organization_id = ?', 
-                      (current_user.employee_id, current_user.organization_id))
+
+        # 社員取得
+        cursor.execute('SELECT * FROM employees WHERE id = ?', (current_user.employee_id,))
         employee = cursor.fetchone()
         if not employee:
             return jsonify({'success': False, 'message': '社員情報が見つかりません'}), 404
+
+        # 会社名取得
         cursor.execute('SELECT name FROM organizations WHERE id = ?', (employee['organization_id'],))
         org = cursor.fetchone()
         company_name = org['name'] if org else '未登録'
+
+        # 埋め込み変数
         variables = {
-            'name': employee['name'],
-            'email': employee['email'],
-            'role': employee['role'],
-            'department': employee['department'],
-            'company': company_name,
-            'phone': employee['phone'] or '未登録',
-            'address': employee['address'] or '未登録',
-            'website': employee['website'] or '未登録',
-            'linkedin': employee['linkedin'] or '未登録',
-            'banner_url': template['banner_url'] or ''
+            "name": employee["name"],
+            "email": employee["email"],
+            "role": employee["role"],
+            "department": employee["department"],
+            "company": company_name,
+            "phone": employee["phone"] or "未登録",
+            "address": employee["address"] or "未登録",
+            "website": employee["website"] or "未登録",
+            "linkedin": employee["linkedin"] or "未登録",
+            "banner_url": template["banner_url"] or ""
         }
-        html_filled = render_signature_template(template['html_content'], variables)
-        html_final = replace_links_with_tracking(html_filled, employee['id'], template_id)
-        cursor.execute('''
-            INSERT INTO signature_history (employee_id, template_id, organization_id) 
-            VALUES (?, ?, ?)
-        ''', (employee['id'], template_id, current_user.organization_id))
+
+        html_filled = render_signature_template(template["html_content"], variables)
+        html_final = replace_links_with_tracking(html_filled, employee["id"], template_id)
+
+        # 履歴保存
+        cursor.execute('INSERT INTO signature_history (employee_id, template_id) VALUES (?, ?)', (employee["id"], template_id))
         db.commit()
+
         return jsonify({'success': True, 'signature_html': html_final})
+
     except Exception as e:
         db.rollback()
         logging.error(f'❌ Signature apply error: {e}')
