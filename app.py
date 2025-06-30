@@ -1014,13 +1014,13 @@ def api_assign_signatures():
 
 @app.route('/api/templates', methods=['GET'])
 @login_required
-@org_scoped_view
+
 def api_get_templates():
+    """テンプレートリストを取得"""
     db = get_db()
     try:
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM templates WHERE organization_id = ? ORDER BY created_at DESC', 
-                      (current_user.organization_id,))
+        cursor.execute('SELECT * FROM templates ORDER BY created_at DESC')
         templates = [dict(row) for row in cursor.fetchall()]
         logging.info(f'✅ Retrieved {len(templates)} templates')
         return jsonify(templates)
@@ -1742,78 +1742,9 @@ def api_get_analytics():
     finally:
         db.close()
 
-@app.route('/api/employee-analytics')
-@login_required
-@org_scoped_view
-def employee_analytics():
-    try:
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        logger.info('🧠 /api/employee-analytics start=%s end=%s', start_date, end_date)
-        if not start_date or not end_date:
-            return jsonify([])
-        db = get_db()
-        cursor = db.cursor()
-        query = '''
-            SELECT e.id AS employee_id,
-                   e.name AS employee_name,
-                   e.department AS department,
-                   COUNT(*) AS clicks
-            FROM analytics a
-            JOIN employees e ON a.employee_id = e.id
-            WHERE DATE(datetime(a.clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
-            AND a.organization_id = ? AND e.organization_id = ?
-            GROUP BY e.id
-        '''
-        cursor.execute(query, (start_date, end_date, current_user.organization_id, current_user.organization_id))
-        rows = cursor.fetchall()
-        result = [{
-            'employee_id': row['employee_id'],
-            'employee_name': row['employee_name'],
-            'department': row['department'],
-            'clicks': row['clicks']
-        } for row in rows]
-        logger.info('✅ /api/employee-analytics returned %d rows', len(result))
-        return jsonify(result)
-    except Exception as e:
-        logger.exception('❌ /api/employee-analytics failed:')
-        return jsonify({'error': 'Internal server error'}), 500
-    finally:
-        db.close()
 
-@app.route('/api/analytics/department', methods=['GET'])
-@login_required
-@org_scoped_view
-def api_get_department_analytics():
-    try:
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        logger.info('🧠 /api/analytics/department start=%s end=%s', start_date, end_date)
-        if not start_date or not end_date:
-            return jsonify({'success': False, 'message': '開始日と終了日を指定してください'}), 400
-        db = get_db()
-        cursor = db.cursor()
-        query = '''
-            SELECT e.department, COUNT(a.id) as clicks
-            FROM analytics a
-            JOIN employees e ON a.employee_id = e.id
-            WHERE DATE(datetime(a.clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
-            AND a.organization_id = ? AND e.organization_id = ?
-            GROUP BY e.department
-        '''
-        cursor.execute(query, (start_date, end_date, current_user.organization_id, current_user.organization_id))
-        rows = cursor.fetchall()
-        result = [{
-            'department': row['department'],
-            'clicks': row['clicks']
-        } for row in rows]
-        logger.info('✅ /api/analytics/department returned %d rows', len(result))
-        return jsonify({'success': True, 'data': result})
-    except sqlite3.Error as e:
-        logger.error(f'❌ Get department analytics error: {e}')
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        db.close()
+
+
 
 @app.route('/api/signature_template', methods=['POST'])
 @login_required
@@ -1992,6 +1923,254 @@ def debug_fix_org():
         return jsonify({'success': True, 'message': f'organization_id={org_id} に一括補正しました'})
     except Exception as e:
         db.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/timeband', methods=['GET'])
+@login_required
+
+def api_get_timeband():
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        query = '''
+            SELECT strftime('%H:00', datetime(clicked_at, '+9 hours')) as timeband, COUNT(*) as clicks
+            FROM analytics
+            WHERE 1=1
+        '''
+        params = []
+        
+        if start_date:
+            query += " AND DATE(datetime(clicked_at, '+9 hours')) >= DATE(?)"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(datetime(clicked_at, '+9 hours')) <= DATE(?)"
+            params.append(end_date)
+        
+        query += ' GROUP BY timeband'
+        
+        cursor.execute(query, params)
+        timebands = {row['timeband']: row['clicks'] for row in cursor.fetchall()}
+        logging.info(f'✅ Retrieved timeband analytics with {len(timebands)} records')
+        return jsonify({'timebands': timebands})
+    except sqlite3.Error as e:
+        logging.error(f'❌ Get timeband error: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route("/api/employee-analytics")
+@login_required
+
+def employee_analytics():
+    try:
+        start_date = request.args.get("start_date")
+        end_date = request.args.get("end_date")
+        logger.info("🧠 /api/employee-analytics start=%s end=%s", start_date, end_date)
+        if not start_date or not end_date:
+            return jsonify([])
+        db = get_db()
+        cursor = db.cursor()
+        query = """
+            SELECT e.id AS employee_id,
+                   e.name AS employee_name,
+                   e.department AS department,
+                   COUNT(*) AS clicks
+            FROM analytics a
+            JOIN employees e ON a.employee_id = e.id
+            WHERE DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
+            GROUP BY e.id
+        """
+        cursor.execute(query, (start_date, end_date))
+        rows = cursor.fetchall()
+        result = [{
+            "employee_id": row["employee_id"],
+            "employee_name": row["employee_name"],
+            "department": row["department"],
+            "clicks": row["clicks"]
+        } for row in rows]
+        logger.info("✅ /api/employee-analytics returned %d rows", len(result))
+        return jsonify(result)
+    except Exception as e:
+        logger.exception("❌ /api/employee-analytics failed:")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/api/analytics/department', methods=['GET'])
+@login_required
+
+def api_get_department_analytics():
+    """部署ごとのアナリティクスを取得"""
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT e.department, COUNT(a.id) as clicks
+            FROM analytics a
+            LEFT JOIN employees e ON a.employee_id = e.id
+            GROUP BY e.department
+        ''')
+        data = [dict(row) for row in cursor.fetchall()]
+        logging.info(f'✅ Retrieved {len(data)} department analytics records')
+        return jsonify({'success': True, 'data': data})
+    except sqlite3.Error as e:
+        logging.error(f'❌ Get department analytics error: {e}')
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+@app.route('/admin/create')
+def admin_create_page():
+    return render_template('admin_create.html')
+
+
+
+
+@app.route('/api/check_admin_password', methods=['POST'])
+def check_admin_password():
+    data = request.get_json()
+    entered = data.get('password')
+    expected = os.getenv('ADMIN_CREATE_PASSWORD')
+    if entered == expected:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False, 'message': 'パスワードが間違っています'}), 401
+
+@app.route('/api/get_admin_key')
+def get_admin_key():
+    from dotenv import load_dotenv
+    load_dotenv()
+    admin_key = os.getenv("ADMIN_CREATE_PASSWORD", "")
+    return jsonify({'key': admin_key})
+
+
+@app.route('/api/companies', methods=['GET'])
+def get_company_list():  # ← 別名にする
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute("""
+            SELECT o.id, o.name AS company_name,
+                   COUNT(e.id) AS employee_count,
+                   (SELECT u.email FROM users u WHERE u.organization_id = o.id AND u.role = 'admin' LIMIT 1) AS admin_email
+            FROM organizations o
+            LEFT JOIN employees e ON e.organization_id = o.id
+            GROUP BY o.id
+        """)
+        results = cursor.fetchall()
+        return jsonify([dict(row) for row in results])
+    except Exception as e:
+        import logging
+        logging.exception("❌ company API error:")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+
+
+
+
+@app.route('/api/create_admin', methods=['POST'])
+@csrf.exempt
+def create_admin():
+    try:
+        data = request.get_json()
+        logging.info(f"📦 create_admin payload: {data}")
+
+        email = data.get('email')
+        password = data.get('password')
+        company_name = data.get('company_name')
+
+        if not email or not password or not company_name:
+            return jsonify({'success': False, 'message': 'すべての項目を入力してください'}), 400
+
+        db = get_db()
+        cursor = db.cursor()
+
+        # 組織が存在するか確認、なければ作成
+        cursor.execute("SELECT id FROM organizations WHERE name = ?", (company_name,))
+        org = cursor.fetchone()
+        if org:
+            org_id = org['id']
+        else:
+            cursor.execute("INSERT INTO organizations (name) VALUES (?)", (company_name,))
+            org_id = cursor.lastrowid
+
+        # ユーザーがすでに存在するかチェック
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        if cursor.fetchone():
+            return jsonify({'success': False, 'message': 'このメールアドレスは既に登録されています'}), 400
+
+        # employees にも admin として登録（存在しなければ）
+        cursor.execute('''
+            INSERT OR IGNORE INTO employees (name, email, department, role, organization_id)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('管理者', email, '', 'admin', org_id))
+
+        # employee_id を取得
+        cursor.execute("SELECT id FROM employees WHERE email = ?", (email,))
+        employee_id = cursor.fetchone()['id']
+
+        # users テーブルに登録（employee_id付き）
+        hashed_pw = generate_password_hash(password)
+        cursor.execute("""
+            INSERT INTO users (email, password, role, employee_id, organization_id)
+            VALUES (?, ?, 'admin', ?, ?)
+        """, (email, hashed_pw, employee_id, org_id))
+
+        db.commit()
+        return jsonify({'success': True, 'message': '管理者アカウントを作成しました'})
+
+    except Exception as e:
+        logging.exception("❌ create_admin error:")
+        db.rollback()
+        return jsonify({'success': False, 'message': f'作成エラー: {e}'}), 500
+    finally:
+        db.close()
+
+
+csrf.exempt(create_admin)
+
+@app.route('/api/companies', methods=['GET'])
+@login_required
+
+def get_companies():
+    if current_user.role != 'admin':
+        return jsonify({'success': False, 'message': '権限がありません'}), 403
+
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute("""
+            SELECT
+                o.id,
+                o.name AS company_name,
+                (
+                    SELECT COUNT(*) FROM users u
+                    WHERE u.organization_id = o.id AND u.role = 'employee'
+                ) AS employee_count,
+                (
+                    SELECT u2.email FROM users u2
+                    WHERE u2.organization_id = o.id AND u2.role = 'admin'
+                    LIMIT 1
+                ) AS admin_email
+            FROM organizations o
+        """)
+        results = cursor.fetchall()
+        return jsonify([
+            {
+                'id': row['id'],
+                'company_name': row['company_name'],
+                'employee_count': row['employee_count'],
+                'admin_email': row['admin_email']
+            }
+            for row in results
+        ])
+    except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()

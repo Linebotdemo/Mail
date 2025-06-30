@@ -421,94 +421,62 @@
       </div>
       <div class="col-md-3">
         <label for="filter-end-date">終了日</label>
-        <input type="text" class="form-control filter-end-date" placeholder="YYYY-MM-DD">
+        <input type="text" id="filter-end-date" class="form-control" placeholder="YYYY-MM-DD">
       </div>
       <div class="col-md-3 align-self-end">
         <button id="apply-date-filter" class="btn btn-primary">絞り込み</button>
       </div>
     </div>
 
-    <ul class="nav nav-tabs">
-      <li class="nav-item">
-        <a class="nav-link active" data-analytics-tab="abtest" href="#">A/Bテスト</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" data-analytics-tab="department" href="#">部署別</a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link" data-analytics-tab="employee" href="#">社員別</a>
-      </li>
-    </ul>
+<ul class="nav nav-tabs">
+  <li class="nav-item">
+    <a class="nav-link active" data-analytics-tab="abtest" href="#">時間帯分析</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-analytics-tab="department" href="#">部署別</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" data-analytics-tab="employee" href="#">社員別</a>
+  </li>
+</ul>
 
-    <!-- ✅ A/Bテスト -->
-    <div id="abtest-tab" class="analytics-tab-content">
-      <h3>勝利バナー: <span id="winner-banner"></span></h3>
+<!-- ✅ 時間帯分析タブ -->
+<div id="abtest-tab" class="analytics-tab-content">
+  <h3>時間帯分析</h3>
+  <p id="no-timeband-data" class="text-muted text-center my-3" style="display: none;">
+    時間帯データが存在しません。
+  </p>
+  <canvas id="timebandChart" width="400" height="200"></canvas>
+</div>
 
-      <p id="no-abtest-data" class="text-muted text-center my-3" style="display: none;">
-        該当するA/Bテストデータがありません。
-      </p>
+<!-- ✅ 部署別 -->
+<div id="department-tab" class="analytics-tab-content hidden">
+  <h3>部署別クリック数</h3>
+  <p id="no-department-data" class="text-muted text-center my-3" style="display: none;">
+    該当する部署別データがありません。
+  </p>
+  <div class="table-responsive">
+    <table class="table table-striped" id="department-table">
+      <thead>
+        <tr><th>部署</th><th>クリック数</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <canvas id="departmentChart" width="400" height="200"></canvas>
+</div>
 
-      <div class="table-responsive">
-        <table class="table table-striped" id="ab-test-table">
-          <thead>
-            <tr>
-              <th>テンプレート</th>
-              <th>クリック数</th>
-              <th>CTR</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <h3>時間帯分析</h3>
-      <p id="no-timeband-data" class="text-muted text-center my-3" style="display: none;">
-        時間帯データが存在しません。
-      </p>
-      <canvas id="timebandChart" width="400" height="200"></canvas>
-    </div>
-
-    <!-- ✅ 部署別 -->
-    <div id="department-tab" class="analytics-tab-content hidden">
-      <h3>部署別クリック数</h3>
-
-      <p id="no-department-data" class="text-muted text-center my-3" style="display: none;">
-        該当する部署別データがありません。
-      </p>
-
-      <div class="table-responsive">
-        <table class="table table-striped" id="department-table">
-          <thead>
-            <tr>
-              <th>部署</th>
-              <th>クリック数</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <canvas id="departmentChart" width="400" height="200"></canvas>
-    </div>
-
-    <!-- ✅ 社員別 -->
+<!-- ✅ 社員別 -->
 <div id="employee-tab" class="analytics-tab-content hidden">
   <h3>社員別クリック数</h3>
-
   <p id="no-employee-data" class="text-muted text-center my-3" style="display: none;">
     該当する社員別データがありません。
   </p>
-
-  <!-- ✅ ← この wrapper を追加 -->
   <div id="employee-table-wrapper">
     <div class="table-responsive">
       <table class="table table-striped" id="employee-analytics-table">
         <thead>
-          <tr>
-            <th>社員</th>
-            <th>部署</th>
-            <th>クリック数</th>
-          </tr>
+          <tr><th>社員</th><th>部署</th><th>クリック数</th></tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -516,6 +484,7 @@
     <canvas id="employeeChart" width="400" height="200"></canvas>
   </div>
 </div>
+
 
 
 

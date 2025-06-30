@@ -1937,16 +1937,36 @@ function loadCampaignManager() {
     e.preventDefault();
     console.log('📤 Submitting campaign form');
 
-    const editingId = $('#campaign-form').data('editing-id');  // ★ 編集中かどうか確認
+    const editingId = $('#campaign-form').data('editing-id');
     const templateIds = $('#template-ids').val();
     const department = $('#department').val();
-    const dateRange = $('#date-range').val().split(' to ');
+
+    // 📝 日付処理改良
+    const rawDate = $('#date-range').val();
+    let dateRange = [];
+
+    if (rawDate.includes('から')) {
+      dateRange = rawDate.split('から').map(s => s.trim());
+    } else if (rawDate.includes(' to ')) {
+      dateRange = rawDate.split(' to ').map(s => s.trim());
+    } else if (rawDate) {
+      dateRange = [rawDate.trim(), rawDate.trim()];
+    } else {
+      // 空のとき fallback
+      showToast('日付範囲を選択してください', 'danger');
+      return;
+    }
+
+    // 保険：1つしか取れなかったら同じ日をend_dateにする
+    if (dateRange.length === 1) {
+      dateRange.push(dateRange[0]);
+    }
 
     const data = {
       template_ids: templateIds,
       department: department || null,
       start_date: dateRange[0],
-      end_date: dateRange[1] || dateRange[0]
+      end_date: dateRange[1]
     };
 
     const method = editingId ? 'PUT' : 'POST';
@@ -1961,7 +1981,7 @@ function loadCampaignManager() {
         console.log('✅ Campaign saved:', response);
         showToast(response.message || (editingId ? 'キャンペーンを更新しました' : 'キャンペーンを作成しました'), 'success');
         $('#campaign-form')[0].reset();
-        $('#campaign-form').removeData('editing-id');  // 編集IDクリア
+        $('#campaign-form').removeData('editing-id');
         loadCampaigns();
       },
       error: function(xhr) {
@@ -1971,6 +1991,7 @@ function loadCampaignManager() {
     });
   });
 }
+
 
 
 function bindTemplateEditButtons() {
@@ -2231,7 +2252,8 @@ function loadAnalytics(startDate, endDate) {
         cache: false,
         success: function(response) {
             console.log('Department analytics data:', response);
-            updateDepartmentChart(response);
+            updateDepartmentChart(response.data);
+
         },
         error: function(xhr, status, error) {
             console.error('❌ Failed loading department analytics:', status, error);
