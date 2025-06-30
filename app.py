@@ -2207,6 +2207,24 @@ def get_companies():
     finally:
         db.close()
 
+@app.route('/api/employees/import/template', methods=['GET'])
+@login_required
+@admin_required
+def download_employee_import_template():
+    # CSV の内容を作成
+    csv_content = io.StringIO()
+    writer = csv.writer(csv_content)
+    writer.writerow(['name', 'email', 'department', 'role'])
+    writer.writerow(['山田 太郎', 'taro@example.com', '営業', 'employee'])
+    writer.writerow(['佐藤 花子', 'hanako@example.com', '総務', 'employee'])
+
+    # レスポンスとして返す
+    response = make_response(csv_content.getvalue())
+    response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''%E7%A4%BE%E5%93%A1%E3%82%A4%E3%83%B3%E3%83%9D%E3%83%BC%E3%83%88%E7%94%A8.csv"
+    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    return response
+
+
 
 # アプリケーションの開始
 if __name__ == '__main__':
