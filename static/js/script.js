@@ -1284,22 +1284,31 @@ $('.nav-link[data-view]').on('click', function (e) {
       });
 
       // 分析タブ切り替え
-      $('[data-analytics-tab]').on('click', function(e) {
-        e.preventDefault();
-        console.log('🔵 Analytics tab clicked:', $(this).data('analytics-tab'));
-        $('[data-analytics-tab]').removeClass('active');
-        $(this).addClass('active');
-        $('.analytics-tab-content').addClass('hidden');
-        const tab = $(this).data('analytics-tab');
-        $(`#${tab}-tab`).removeClass('hidden');
-        if (tab === 'abtest') {
-          loadAbTestAnalytics();
+$('[data-analytics-tab]').on('click', function (e) {
+  e.preventDefault();
+  console.log('🔵 Analytics tab clicked:', $(this).data('analytics-tab'));
 
+  // タブのアクティブ状態を切り替え
+  $('[data-analytics-tab]').removeClass('active');
+  $(this).addClass('active');
 
-        } else if (tab === 'employee') {
-          loadEmployeeAnalytics();
-        }
-      });
+  // 全てのタブコンテンツを非表示に
+  $('.analytics-tab-content').addClass('hidden');
+
+  // 対象のタブだけ表示
+  const tab = $(this).data('analytics-tab');
+  $(`#${tab}-tab`).removeClass('hidden');
+
+  if (tab === 'abtest') {
+    loadAbTestAnalytics();
+  }
+
+  // employee タブでのデータロードは不要ならコメントアウト
+  // else if (tab === 'employee') {
+  //   loadEmployeeAnalytics();
+  // }
+});
+
 
       // 社員編集
 $('#employee-list').on('click', '.edit-employee-btn', function() {
@@ -2245,30 +2254,30 @@ function loadAnalytics(startDate, endDate) {
     });
 
     // 部署別データ
-    $.ajax({
-        url: '/api/analytics/department',
-        data: params,
-        timeout: 10000,
-        cache: false,
-        success: function(response) {
-            console.log('Department analytics data:', response);
-            updateDepartmentChart(response.data);
+$.ajax({
+    url: '/api/analytics/department',
+    data: params,
+    timeout: 10000,
+    cache: false,
+    success: function(response) {
+        console.log('Department analytics data:', response);
+        updateDepartmentChart(response.data);
+    },
+    error: function(xhr, status, error) {
+        console.error('❌ Failed loading department analytics:', status, error);
+        showToast('部署データの取得に失敗しました', 'error');
+    }
+});
 
-        },
-        error: function(xhr, status, error) {
-            console.error('❌ Failed loading department analytics:', status, error);
-            showToast('部署データの取得に失敗しました', 'error');
-        }
-    });
+// 社員別データ ← 修正済み！
+$.get('/api/employee-analytics', params, function(employeeTracks) {
+    console.log('👤 employee analytics fetched:', employeeTracks);
+    loadEmployeeAnalytics(employeeTracks);
+}).fail(function (xhr) {
+    console.error('❌ /api/employee-analytics エラー:', xhr.status, xhr.statusText);
+    showToast('社員データの取得に失敗しました', 'error');
+});
 
-    // 社員別データ ← 修正済み！
-    $.get('/api/employee-analytics', params, function(employeeTracks) {
-        console.log('👤 employee analytics fetched:', employeeTracks);
-        loadEmployeeAnalytics(employeeTracks);
-    }).fail(function (xhr) {
-        console.error('❌ /api/employee-analytics エラー:', xhr.status, xhr.statusText);
-        showToast('社員データの取得に失敗しました', 'error');
-    });
 }
 
 
