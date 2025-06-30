@@ -1590,50 +1590,53 @@ def generate_track():
         db.close()
 
 @app.route('/api/click/<track_id>', methods=['GET'])
-@login_required
-@org_scoped_view
 def api_track_click(track_id):
     db = get_db()
     db.row_factory = sqlite3.Row
     try:
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM tracking WHERE track_id = ? AND organization_id = ?', 
-                      (track_id, current_user.organization_id))
+        cursor.execute('SELECT * FROM tracking WHERE track_id = ?', (track_id,))
         track = cursor.fetchone()
         if not track:
             logging.warning(f'⚠️ トラッキングIDが見つかりません: {track_id}')
             return jsonify({'success': False, 'message': 'トラッキングが見つかりません'}), 404
+
         ip = request.remote_addr
         ua = request.headers.get('User-Agent', 'unknown')
         now = datetime.utcnow()
         now_str = now.isoformat()
+
         cookie_key = f'track_{track_id}'
         clicked_cookie = request.cookies.get(cookie_key)
         logging.info(f'🧪 Click attempt: track_id={track_id}, ip={ip}, ua={ua}, cookie={clicked_cookie}')
+
         if clicked_cookie:
             logging.info(f'🍪 Cookie blocked: {track_id}')
             return redirect(track['url'])
+
         cursor.execute('''
             SELECT created_at FROM analytics
             WHERE track_id = ? AND ip = ? AND organization_id = ?
             ORDER BY created_at DESC LIMIT 1
-        ''', (track_id, ip, current_user.organization_id))
+        ''', (track_id, ip, track['organization_id']))
         row = cursor.fetchone()
         if row and row['created_at']:
             last_click = datetime.fromisoformat(row['created_at']) if isinstance(row['created_at'], str) else row['created_at']
             if (now - last_click).total_seconds() < 10:
                 logging.info(f'🛑 IP timing blocked (10秒以内): {track_id}')
                 return redirect(track['url'])
+
         resp = make_response(redirect(track['url']))
         resp.set_cookie(cookie_key, 'clicked', max_age=60, httponly=True)
+
         cursor.execute('UPDATE tracking SET clicks = clicks + 1 WHERE track_id = ? AND organization_id = ?', 
-                      (track_id, current_user.organization_id))
+                      (track_id, track['organization_id']))
         cursor.execute('''
             INSERT INTO analytics (track_id, template_id, employee_id, ip, user_agent, created_at, organization_id)
             SELECT track_id, template_id, employee_id, ?, ?, ?, ?
             FROM tracking
             WHERE track_id = ? AND organization_id = ?
-        ''', (ip, ua, now_str, current_user.organization_id, track_id, current_user.organization_id))
+        ''', (ip, ua, now_str, track['organization_id'], track_id, track['organization_id']))
         db.commit()
         logging.info(f'✅ Click tracked: {track_id} (cookie + ip checked)')
         return resp
@@ -1642,6 +1645,7 @@ def api_track_click(track_id):
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
 
 @app.route('/api/check_track_exists/<track_id>')
 @login_required
