@@ -1111,7 +1111,7 @@ $('#apply-date-filter').on('click', function () {
 
 
     // プレースホルダーボタンの生成
-    const placeholders = ['{{name}}', '{{role}}', '{{email}}', '{{department}}', '{{company}}', '{{phone}}', '{{address}}', '{{website}}', '{{linkedin}}'];
+    const placeholders = ['{{name}}', '{{email}}', '{{department}}', '{{company}}', '{{phone}}', '{{address}}', '{{website}}', '{{linkedin}}'];
     const placeholderHtml = placeholders.map(p => `
       <button type="button" class="btn btn-outline-secondary btn-sm placeholder-btn me-1 mb-1" data-placeholder="${p}">${p}</button>
     `).join('');
