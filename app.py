@@ -1014,21 +1014,25 @@ def api_assign_signatures():
 
 @app.route('/api/templates', methods=['GET'])
 @login_required
-
 def api_get_templates():
-    """テンプレートリストを取得"""
+    """組織IDで絞ったテンプレートリストを取得"""
     db = get_db()
     try:
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM templates ORDER BY created_at DESC')
+        cursor.execute('''
+            SELECT * FROM templates
+            WHERE organization_id = ?
+            ORDER BY created_at DESC
+        ''', (current_user.organization_id,))
         templates = [dict(row) for row in cursor.fetchall()]
-        logging.info(f'✅ Retrieved {len(templates)} templates')
+        logging.info(f'✅ Retrieved {len(templates)} templates for org_id={current_user.organization_id}')
         return jsonify(templates)
     except sqlite3.Error as e:
         logging.error(f'❌ Get templates error: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
 
 @app.route('/api/templates', methods=['POST'])
 @login_required
@@ -1929,7 +1933,6 @@ def debug_fix_org():
 
 @app.route('/api/timeband', methods=['GET'])
 @login_required
-
 def api_get_timeband():
     db = get_db()
     try:
@@ -1940,10 +1943,10 @@ def api_get_timeband():
         query = '''
             SELECT strftime('%H:00', datetime(clicked_at, '+9 hours')) as timeband, COUNT(*) as clicks
             FROM analytics
-            WHERE 1=1
+            WHERE organization_id = ?
         '''
-        params = []
-        
+        params = [current_user.organization_id]
+
         if start_date:
             query += " AND DATE(datetime(clicked_at, '+9 hours')) >= DATE(?)"
             params.append(start_date)
@@ -1952,10 +1955,10 @@ def api_get_timeband():
             params.append(end_date)
         
         query += ' GROUP BY timeband'
-        
+
         cursor.execute(query, params)
         timebands = {row['timeband']: row['clicks'] for row in cursor.fetchall()}
-        logging.info(f'✅ Retrieved timeband analytics with {len(timebands)} records')
+        logging.info(f'✅ Retrieved {len(timebands)} timeband records for org_id={current_user.organization_id}')
         return jsonify({'timebands': timebands})
     except sqlite3.Error as e:
         logging.error(f'❌ Get timeband error: {e}')
@@ -1963,16 +1966,18 @@ def api_get_timeband():
     finally:
         db.close()
 
+
 @app.route("/api/employee-analytics")
 @login_required
-
 def employee_analytics():
     try:
         start_date = request.args.get("start_date")
         end_date = request.args.get("end_date")
         logger.info("🧠 /api/employee-analytics start=%s end=%s", start_date, end_date)
+
         if not start_date or not end_date:
             return jsonify([])
+
         db = get_db()
         cursor = db.cursor()
         query = """
@@ -1982,10 +1987,14 @@ def employee_analytics():
                    COUNT(*) AS clicks
             FROM analytics a
             JOIN employees e ON a.employee_id = e.id
-            WHERE DATE(datetime(clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
-            GROUP BY e.id
+            WHERE DATE(datetime(a.clicked_at, '+9 hours')) BETWEEN DATE(?) AND DATE(?)
+              AND a.organization_id = ?
+              AND e.organization_id = ?
+            GROUP BY e.id, e.name, e.department
         """
-        cursor.execute(query, (start_date, end_date))
+        params = (start_date, end_date, current_user.organization_id, current_user.organization_id)
+
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         result = [{
             "employee_id": row["employee_id"],
@@ -1993,34 +2002,53 @@ def employee_analytics():
             "department": row["department"],
             "clicks": row["clicks"]
         } for row in rows]
+
         logger.info("✅ /api/employee-analytics returned %d rows", len(result))
         return jsonify(result)
+
     except Exception as e:
         logger.exception("❌ /api/employee-analytics failed:")
         return jsonify({"error": "Internal server error"}), 500
+    finally:
+        db.close()
+
 
 @app.route('/api/analytics/department', methods=['GET'])
 @login_required
-
 def api_get_department_analytics():
-    """部署ごとのアナリティクスを取得"""
     db = get_db()
     try:
         cursor = db.cursor()
-        cursor.execute('''
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        query = '''
             SELECT e.department, COUNT(a.id) as clicks
             FROM analytics a
             LEFT JOIN employees e ON a.employee_id = e.id
-            GROUP BY e.department
-        ''')
+            WHERE a.organization_id = ?
+        '''
+        params = [current_user.organization_id]
+
+        if start_date:
+            query += " AND DATE(datetime(a.clicked_at, '+9 hours')) >= DATE(?)"
+            params.append(start_date)
+        if end_date:
+            query += " AND DATE(datetime(a.clicked_at, '+9 hours')) <= DATE(?)"
+            params.append(end_date)
+        
+        query += ' GROUP BY e.department'
+
+        cursor.execute(query, params)
         data = [dict(row) for row in cursor.fetchall()]
-        logging.info(f'✅ Retrieved {len(data)} department analytics records')
+        logging.info(f'✅ Retrieved {len(data)} department analytics records for org_id={current_user.organization_id}')
         return jsonify({'success': True, 'data': data})
     except sqlite3.Error as e:
         logging.error(f'❌ Get department analytics error: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
 
 
 @app.route('/admin/create')
