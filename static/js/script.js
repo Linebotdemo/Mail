@@ -1347,7 +1347,8 @@ function loadCampaignAnalytics() {
     tbody.empty();
 
     response.data.forEach(row => {
-      const name = row.campaign_name || '不明';
+      const name = row.template_name || '不明';
+
       labels.push(name);
       data.push(row.clicks);
 

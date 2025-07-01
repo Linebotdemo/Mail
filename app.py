@@ -119,6 +119,7 @@ def init_db():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS campaigns (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
                     template_ids TEXT NOT NULL,
                     department TEXT,
                     start_date TIMESTAMP NOT NULL,
@@ -322,36 +323,63 @@ def render_signature_template(template_html, variables):
     return template.render(**variables)
 
 def replace_links_with_tracking(html, employee_id, template_id):
+    from bs4 import BeautifulSoup
+    import shortuuid
+
     soup = BeautifulSoup(html, "html.parser")
     db = get_db()
     cursor = db.cursor()
     try:
+        # template の campaign_id を取得
+        cursor.execute('''
+            SELECT campaign_id FROM templates 
+            WHERE id = ? AND organization_id = ?
+        ''', (template_id, current_user.organization_id))
+        row = cursor.fetchone()
+        campaign_id = row['campaign_id'] if row else None
+        logging.info(f'✅ template_id={template_id} の campaign_id={campaign_id}')
+
         for a in soup.find_all("a", href=True):
             original_url = a["href"]
             if '/click/' in original_url:
                 track_id = original_url.split('/click/')[-1]
                 cursor.execute('SELECT url FROM tracking WHERE track_id = ? AND organization_id = ?', 
-                              (track_id, current_user.organization_id))
+                               (track_id, current_user.organization_id))
                 row = cursor.fetchone()
                 if row:
                     original_url = row['url']
+
             cursor.execute('''
-                SELECT * FROM tracking WHERE url = ? AND employee_id = ? AND template_id = ? AND organization_id = ?
+                SELECT * FROM tracking 
+                WHERE url = ? AND employee_id = ? AND template_id = ? AND organization_id = ?
             ''', (original_url, employee_id, template_id, current_user.organization_id))
             existing = cursor.fetchone()
             if existing:
                 track_id = existing['track_id']
+                # 📝 campaign_id が無い場合補正
+                if existing['campaign_id'] is None and campaign_id is not None:
+                    cursor.execute('''
+                        UPDATE tracking 
+                        SET campaign_id = ? 
+                        WHERE id = ?
+                    ''', (campaign_id, existing['id']))
+                    db.commit()
+                    logging.info(f'✅ tracking 補正: id={existing["id"]} に campaign_id={campaign_id} をセット')
             else:
                 track_id = shortuuid.uuid()
                 cursor.execute('''
-                    INSERT INTO tracking (track_id, url, employee_id, template_id, clicks, organization_id)
-                    VALUES (?, ?, ?, ?, 0, ?)
-                ''', (track_id, original_url, employee_id, template_id, current_user.organization_id))
+                    INSERT INTO tracking (track_id, url, employee_id, template_id, campaign_id, clicks, organization_id)
+                    VALUES (?, ?, ?, ?, ?, 0, ?)
+                ''', (track_id, original_url, employee_id, template_id, campaign_id, current_user.organization_id))
                 db.commit()
+                logging.info(f'✅ 新規 tracking 作成: track_id={track_id}, campaign_id={campaign_id}')
+
             a['href'] = url_for('api_track_click', track_id=track_id, _external=True)
+
         return str(soup)
     finally:
         db.close()
+
 
 # Jinja2 カスタムフィルタ
 def format_datetime(value, format='%Y-%m-%d %H:%M:%S'):
@@ -435,6 +463,9 @@ def get_employees(page=1, per_page=15, filter_name=None, filter_email=None, filt
         return {'success': False, 'message': str(e)}
     finally:
         db.close()
+
+
+
 
 # エラーハンドリング
 @app.errorhandler(404)
@@ -1611,18 +1642,15 @@ def api_track_click(track_id):
 
         ip = request.remote_addr
         ua = request.headers.get('User-Agent', 'unknown')
-        now = datetime.utcnow()
-        now_str = now.isoformat()
+        now_str = datetime.utcnow().isoformat()
 
         cookie_key = f'track_{track_id}'
         clicked_cookie = request.cookies.get(cookie_key)
-        logging.info(f'🧪 Click attempt: track_id={track_id}, ip={ip}, ua={ua}, cookie={clicked_cookie}')
 
         if clicked_cookie:
-            logging.info(f'🍪 Cookie blocked: {track_id}')
             return redirect(track['url'])
 
-        # IP のクリック間隔チェック (10秒以内ブロック)
+        # クリック間隔確認
         cursor.execute('''
             SELECT created_at FROM analytics
             WHERE track_id = ? AND ip = ? AND organization_id = ?
@@ -1630,40 +1658,63 @@ def api_track_click(track_id):
         ''', (track_id, ip, track['organization_id']))
         row = cursor.fetchone()
         if row and row['created_at']:
-            last_click = datetime.fromisoformat(row['created_at']) if isinstance(row['created_at'], str) else row['created_at']
-            if (now - last_click).total_seconds() < 10:
-                logging.info(f'🛑 IP timing blocked (10秒以内): {track_id}')
+            last_click = datetime.fromisoformat(row['created_at'])
+            if (datetime.utcnow() - last_click).total_seconds() < 10:
                 return redirect(track['url'])
 
-        # レスポンスとクッキー
-        resp = make_response(redirect(track['url']))
-        resp.set_cookie(cookie_key, 'clicked', max_age=60, httponly=True)
+        # campaign_id 補完処理
+        campaign_id = track['campaign_id']
+        if campaign_id is None:
+            cursor.execute('''
+                SELECT campaign_id FROM templates
+                WHERE id = ? AND organization_id = ?
+            ''', (track['template_id'], track['organization_id']))
+            template_row = cursor.fetchone()
+            if template_row and template_row['campaign_id']:
+                campaign_id = template_row['campaign_id']
+                # tracking にも更新
+                cursor.execute('''
+                    UPDATE tracking SET campaign_id = ?
+                    WHERE track_id = ? AND organization_id = ?
+                ''', (campaign_id, track_id, track['organization_id']))
 
-        # tracking のクリック数カウントアップ
+        # クリック数更新
         cursor.execute('''
             UPDATE tracking
             SET clicks = clicks + 1
             WHERE track_id = ? AND organization_id = ?
         ''', (track_id, track['organization_id']))
 
-        # analytics に記録 (campaign_id を含む)
+        # analytics に挿入
         cursor.execute('''
-            INSERT INTO analytics (track_id, template_id, employee_id, campaign_id, ip, user_agent, created_at, organization_id)
-            SELECT track_id, template_id, employee_id, campaign_id, ?, ?, ?, ?
-            FROM tracking
-            WHERE track_id = ? AND organization_id = ?
-        ''', (ip, ua, now_str, track['organization_id'], track_id, track['organization_id']))
+            INSERT INTO analytics (
+                track_id, template_id, employee_id, campaign_id, ip, user_agent, created_at, organization_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            track['track_id'],
+            track['template_id'],
+            track['employee_id'],
+            campaign_id,
+            ip,
+            ua,
+            now_str,
+            track['organization_id']
+        ))
 
         db.commit()
-        logging.info(f'✅ Click tracked: {track_id} (cookie + ip checked)')
+
+        resp = make_response(redirect(track['url']))
+        resp.set_cookie(cookie_key, 'clicked', max_age=60, httponly=True)
         return resp
 
     except Exception as e:
         logging.error(f'❌ Error tracking click: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
-
     finally:
         db.close()
+
+
+
 
 
 
@@ -2249,33 +2300,36 @@ def download_employee_import_template():
 def api_get_campaign_analytics():
     db = get_db()
     try:
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
+        start_date_raw = request.args.get('start_date')
+        end_date_raw = request.args.get('end_date')
+
+        # 時間を付加
+        start_date = start_date_raw + 'T00:00:00'
+        end_date = end_date_raw + 'T23:59:59'
 
         cursor = db.cursor()
         cursor.execute('''
             SELECT
               c.id AS campaign_id,
+              t.name AS template_name,
               COUNT(a.id) AS clicks
             FROM
               campaigns c
             JOIN
-              tracking t
-            ON
-              (',' || c.template_ids || ',' LIKE '%,' || t.template_id || ',%')
+              templates t ON t.campaign_id = c.id
             JOIN
-              analytics a
-            ON
-              a.track_id = t.track_id
+              tracking tr ON tr.template_id = t.id
+            JOIN
+              analytics a ON a.track_id = tr.track_id
             WHERE
               c.organization_id = ?
               AND a.created_at BETWEEN ? AND ?
             GROUP BY
-              c.id
+              c.id, t.name
         ''', (current_user.organization_id, start_date, end_date))
 
         data = [dict(row) for row in cursor.fetchall()]
-        logging.info(f'✅ Retrieved {len(data)} campaign analytics records')
+        logging.info(f'✅ Retrieved {len(data)} campaign analytics records with template names')
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         logging.exception('❌ Campaign analytics error')
@@ -2285,7 +2339,64 @@ def api_get_campaign_analytics():
 
 
 
-# アプリケーションの開始
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     init_db()
+
+    # tracking テーブルに campaign_id カラムが無ければ追加
+    def ensure_tracking_campaign_id_column():
+        db = get_db()
+        cursor = db.cursor()
+        try:
+            cursor.execute("PRAGMA table_info(tracking)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'campaign_id' not in columns:
+                cursor.execute("ALTER TABLE tracking ADD COLUMN campaign_id INTEGER")
+                db.commit()
+                logging.info("✅ tracking テーブルに campaign_id カラムを追加しました。")
+            else:
+                logging.info("✅ tracking テーブルには既に campaign_id カラムがあります。")
+        except Exception as e:
+            db.rollback()
+            logging.error(f"❌ tracking テーブル補正中にエラー発生: {e}")
+        finally:
+            db.close()
+
+    # カラム一覧を表示（デバッグ用）
+    def debug_show_tracking_columns():
+        db = get_db()
+        cursor = db.cursor()
+        try:
+            cursor.execute("PRAGMA table_info(tracking)")
+            columns = cursor.fetchall()
+            print("📝 tracking テーブルのカラム一覧:")
+            for col in columns:
+                print(f" - {col['name']}")
+        finally:
+            db.close()
+
+    ensure_tracking_campaign_id_column()
+    debug_show_tracking_columns()
+
     app.run(debug=True, host='0.0.0.0', port=10000)
