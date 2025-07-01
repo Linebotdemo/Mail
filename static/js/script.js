@@ -1995,14 +1995,17 @@ function loadTemplateEditor(template = null) {
     const method = id ? 'PUT' : 'POST';
 
     const html = $('#html-content').val();
-    console.log('💾 保存前HTML:', html);
+console.log('💾 保存前HTML:', html);
 
-    const data = {
-      name: $('#template-name').val(),
-      html_content: html,
-      text_content: $('#text-content').val(),
-      banner_url: $('#banner-url').val()
-    };
+const data = {
+  name: $('#template-name').val(),
+  html_content: html,
+  text_content: $('#text-content').val(),
+  banner_url: $('#banner-url').val() || ''
+
+};
+
+console.log('🚀 Saving template with data:', data);
 
     $.ajax({
       url: url,
