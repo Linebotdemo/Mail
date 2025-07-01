@@ -441,7 +441,12 @@
   <li class="nav-item">
     <a class="nav-link" data-analytics-tab="employee" href="#">社員別</a>
   </li>
+  <li class="nav-item">
+    <a class="nav-link" data-analytics-tab="campaign" href="#">キャンペーン別</a> <!-- 追加 -->
+  </li>
 </ul>
+
+
 
 <!-- ✅ 時間帯分析タブ -->
 <div id="abtest-tab" class="analytics-tab-content">
@@ -485,6 +490,25 @@
       </table>
     </div>
     <canvas id="employeeChart" width="400" height="200"></canvas>
+  </div>
+</div>
+
+<!-- ✅ キャンペーン別 -->
+<div id="campaign-tab" class="analytics-tab-content hidden">
+  <h3>キャンペーン別クリック数</h3>
+  <p id="no-campaign-data" class="text-muted text-center my-3" style="display: none;">
+    該当するキャンペーンデータがありません。
+  </p>
+  <div id="campaign-table-wrapper">
+    <div class="table-responsive">
+      <table class="table table-striped" id="campaign-analytics-table">
+        <thead>
+          <tr><th>キャンペーン</th><th>クリック数</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <canvas id="campaignChart" width="400" height="200"></canvas>
   </div>
 </div>
 

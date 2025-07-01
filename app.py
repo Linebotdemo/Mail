@@ -181,6 +181,7 @@ def init_db():
                     track_id TEXT NOT NULL,
                     template_id INTEGER,
                     employee_id INTEGER,
+                    campaign_id INTEGER,
                     department TEXT,
                     clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     ip TEXT,
@@ -189,6 +190,7 @@ def init_db():
                     organization_id INTEGER NOT NULL,
                     FOREIGN KEY (template_id) REFERENCES templates(id),
                     FOREIGN KEY (employee_id) REFERENCES employees(id),
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns(id),
                     FOREIGN KEY (organization_id) REFERENCES organizations(id)
                 )
             ''')
@@ -1563,21 +1565,26 @@ def generate_track():
         validate_csrf(csrf_token)
     except CSRFError:
         return jsonify({'success': False, 'message': 'CSRFトークンが無効です'}), 400
+
     data = request.get_json()
     url = data.get('url')
     template_id = data.get('templateId') or data.get('template_id')
     employee_id = data.get('employeeId') or data.get('employee_id')
-    logging.info(f'📥 tracking生成リクエスト受信: url={url}, template_id={template_id}, employee_id={employee_id}')
+    campaign_id = data.get('campaign_id')  # ★ 追加
+
+    logging.info(f'📥 tracking生成リクエスト受信: url={url}, template_id={template_id}, employee_id={employee_id}, campaign_id={campaign_id}')
+
     if not url or not employee_id:
         return jsonify({'success': False, 'message': 'URLとemployee_idは必須です'}), 400
+
     track_id = shortuuid.uuid()
     db = get_db()
     try:
         cursor = db.cursor()
         cursor.execute('''
-            INSERT INTO tracking (track_id, url, template_id, employee_id, clicks, created_at, organization_id)
-            VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP, ?)
-        ''', (track_id, url, template_id, employee_id, current_user.organization_id))
+            INSERT INTO tracking (track_id, url, template_id, employee_id, campaign_id, clicks, created_at, organization_id)
+            VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, ?)
+        ''', (track_id, url, template_id, employee_id, campaign_id, current_user.organization_id))
         db.commit()
         track_url = url_for('api_track_click', track_id=track_id, _external=True)
         logging.info(f'✅ tracking生成成功: track_id={track_id}, url={url}, track_url={track_url}')
@@ -1588,6 +1595,7 @@ def generate_track():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
 
 @app.route('/api/click/<track_id>', methods=['GET'])
 def api_track_click(track_id):
@@ -1614,6 +1622,7 @@ def api_track_click(track_id):
             logging.info(f'🍪 Cookie blocked: {track_id}')
             return redirect(track['url'])
 
+        # IP のクリック間隔チェック (10秒以内ブロック)
         cursor.execute('''
             SELECT created_at FROM analytics
             WHERE track_id = ? AND ip = ? AND organization_id = ?
@@ -1626,25 +1635,36 @@ def api_track_click(track_id):
                 logging.info(f'🛑 IP timing blocked (10秒以内): {track_id}')
                 return redirect(track['url'])
 
+        # レスポンスとクッキー
         resp = make_response(redirect(track['url']))
         resp.set_cookie(cookie_key, 'clicked', max_age=60, httponly=True)
 
-        cursor.execute('UPDATE tracking SET clicks = clicks + 1 WHERE track_id = ? AND organization_id = ?', 
-                      (track_id, track['organization_id']))
+        # tracking のクリック数カウントアップ
         cursor.execute('''
-            INSERT INTO analytics (track_id, template_id, employee_id, ip, user_agent, created_at, organization_id)
-            SELECT track_id, template_id, employee_id, ?, ?, ?, ?
+            UPDATE tracking
+            SET clicks = clicks + 1
+            WHERE track_id = ? AND organization_id = ?
+        ''', (track_id, track['organization_id']))
+
+        # analytics に記録 (campaign_id を含む)
+        cursor.execute('''
+            INSERT INTO analytics (track_id, template_id, employee_id, campaign_id, ip, user_agent, created_at, organization_id)
+            SELECT track_id, template_id, employee_id, campaign_id, ?, ?, ?, ?
             FROM tracking
             WHERE track_id = ? AND organization_id = ?
         ''', (ip, ua, now_str, track['organization_id'], track_id, track['organization_id']))
+
         db.commit()
         logging.info(f'✅ Click tracked: {track_id} (cookie + ip checked)')
         return resp
+
     except Exception as e:
         logging.error(f'❌ Error tracking click: {e}')
         return jsonify({'success': False, 'message': str(e)}), 500
+
     finally:
         db.close()
+
 
 
 @app.route('/api/check_track_exists/<track_id>')
@@ -2223,6 +2243,45 @@ def download_employee_import_template():
     response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''%E7%A4%BE%E5%93%A1%E3%82%A4%E3%83%B3%E3%83%9D%E3%83%BC%E3%83%88%E7%94%A8.csv"
     response.headers['Content-Type'] = 'text/csv; charset=utf-8'
     return response
+
+@app.route('/api/analytics/campaign', methods=['GET'])
+@login_required
+def api_get_campaign_analytics():
+    db = get_db()
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT
+              c.id AS campaign_id,
+              COUNT(a.id) AS clicks
+            FROM
+              campaigns c
+            JOIN
+              tracking t
+            ON
+              (',' || c.template_ids || ',' LIKE '%,' || t.template_id || ',%')
+            JOIN
+              analytics a
+            ON
+              a.track_id = t.track_id
+            WHERE
+              c.organization_id = ?
+              AND a.created_at BETWEEN ? AND ?
+            GROUP BY
+              c.id
+        ''', (current_user.organization_id, start_date, end_date))
+
+        data = [dict(row) for row in cursor.fetchall()]
+        logging.info(f'✅ Retrieved {len(data)} campaign analytics records')
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        logging.exception('❌ Campaign analytics error')
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
 
 
 

@@ -1301,6 +1301,8 @@ $('[data-analytics-tab]').on('click', function (e) {
 
   if (tab === 'abtest') {
     loadAbTestAnalytics();
+  } else if (tab === 'campaign') {
+    loadCampaignAnalytics();  // ✅ 追加した部分
   }
 
   // employee タブでのデータロードは不要ならコメントアウト
@@ -1308,6 +1310,89 @@ $('[data-analytics-tab]').on('click', function (e) {
   //   loadEmployeeAnalytics();
   // }
 });
+function loadCampaignAnalytics() {
+  console.log('🚀 loadCampaignAnalytics called');
+
+  const params = {
+    start_date: $('#filter-start-date').val(),
+    end_date: $('#filter-end-date').val()
+  };
+
+  console.log('📡 Sending request to /api/analytics/campaign with params:', params);
+
+  $.get('/api/analytics/campaign', params, function(response) {
+    console.log('✅ Response received from /api/analytics/campaign:', response);
+
+    if (!response.success || !response.data || !response.data.length) {
+      console.warn('⚠️ No campaign data found');
+      $('#no-campaign-data').show();
+      $('#campaign-table-wrapper').hide();
+
+      if (window.campaignChart instanceof Chart) {
+        console.log('🧹 Destroying existing campaignChart');
+        window.campaignChart.destroy();
+        window.campaignChart = null;
+      }
+
+      return;
+    }
+
+    $('#no-campaign-data').hide();
+    $('#campaign-table-wrapper').show();
+
+    const labels = [];
+    const data = [];
+
+    const tbody = $('#campaign-analytics-table tbody');
+    tbody.empty();
+
+    response.data.forEach(row => {
+      const name = row.campaign_name || '不明';
+      labels.push(name);
+      data.push(row.clicks);
+
+      tbody.append(`<tr><td>${name}</td><td>${row.clicks}</td></tr>`);
+    });
+
+    if (window.campaignChart instanceof Chart) {
+      console.log('🧹 Destroying existing campaignChart before creating new one');
+      window.campaignChart.destroy();
+    }
+
+    const ctx = document.getElementById('campaignChart').getContext('2d');
+    window.campaignChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'クリック数',
+          data: data,
+          backgroundColor: 'rgba(54, 162, 235, 0.5)'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    console.log('🎨 Campaign chart created');
+  })
+  .fail(function(xhr, status, error) {
+    console.error(`❌ /api/analytics/campaign エラー: status=${xhr.status}, statusText=${xhr.statusText}, error=${error}`);
+    showToast('キャンペーンデータの取得に失敗しました', 'danger');
+  });
+}
+
+
+
+
+
 
 
       // 社員編集
@@ -1437,30 +1522,46 @@ function fetchCurrentUser() {
   });
 }
 
-function generateTrackingLink(originalUrl, fullMatch, updatedHtml, completed, matches, callback) {
+function generateTrackingLink(originalUrl, fullMatch, updatedHtml, completed, matches, callback, campaignId = null) {
+  const payload = {
+    url: originalUrl,
+    employeeId: currentUserId,
+    templateId
+  };
+  if (campaignId) {
+    payload.campaign_id = campaignId;
+  }
+
   $.ajax({
     url: '/api/generate_track',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({
-      url: originalUrl,
-      employeeId: currentUserId,
-      templateId
-    }),
+    data: JSON.stringify(payload),
     success: function (res) {
+      console.log('📝 API Response:', res);
       if (res.success) {
         const newLink = `<a href="${res.track_url}" target="_blank">${res.track_url}</a>`;
-        updatedHtml = updatedHtml.replace(fullMatch, newLink);
+        // 正規表現で安全に置換
+        const escaped = fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'g');
+        updatedHtml = updatedHtml.replace(regex, newLink);
+      } else {
+        console.warn('⚠️ トラッキングリンク生成失敗:', res.message);
       }
       completed.count++;
+      console.log(`🔄 Completed ${completed.count}/${matches.length}`);
+      console.log('✨ Updated HTML:', updatedHtml);
       if (completed.count === matches.length) callback(updatedHtml);
     },
-    error: function () {
+    error: function (xhr) {
+      console.error('❌ トラッキングリンク生成エラー:', xhr.responseText);
       completed.count++;
       if (completed.count === matches.length) callback(updatedHtml);
     }
   });
 }
+
+
 
 function copyToClipboard(content) {
   console.log('📋 Calling copyToClipboard...');
