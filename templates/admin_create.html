@@ -34,84 +34,186 @@
     <div id="result" class="mt-3"></div>
 
     <hr class="my-5">
-    <h3>🏢 登録されている企業一覧</h3>
-    <table class="table table-bordered mt-3">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>企業名</th>
-          <th>従業員数</th>
-          <th>管理者メール</th>
-        </tr>
-      </thead>
-      <tbody id="company-list">
-        <tr><td colspan="4">読み込み中...</td></tr>
-      </tbody>
-    </table>
+
+    <!-- タブナビ -->
+    <ul class="nav nav-tabs" id="dataTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="companies-tab" data-bs-toggle="tab" data-bs-target="#companies" type="button" role="tab">🏢 登録企業一覧</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="received-tab" data-bs-toggle="tab" data-bs-target="#received" type="button" role="tab">📥 受信データ確認</button>
+      </li>
+    </ul>
+
+    <!-- タブコンテンツ -->
+    <div class="tab-content mt-3">
+      <!-- 企業一覧 -->
+      <div class="tab-pane fade show active" id="companies" role="tabpanel">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>企業名</th>
+              <th>従業員数</th>
+              <th>管理者メール</th>
+            </tr>
+          </thead>
+          <tbody id="company-list">
+            <tr><td colspan="4">読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- 受信データ -->
+      <div class="tab-pane fade" id="received" role="tabpanel">
+        <table class="table table-bordered">
+<thead>
+  <tr>
+    <th>名前</th>
+    <th>メールアドレス</th>
+    <th>お問い合わせ内容</th>
+    <th>受付日時</th>
+  </tr>
+</thead>
+
+          <tbody id="received-data">
+            <tr><td colspan="2">まだ送信されていません</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
   <script>
+    console.log('[startup] script load');
+
+    // グローバル変数
     let SERVER_PASSWORD = "";
 
-    // ✅ .envの値を取得して格納
-    $.get('/api/get_admin_key', function(res) {
-      SERVER_PASSWORD = res.key;
-    });
+    // グローバル関数: 企業一覧取得
+    function loadCompanies() {
+      console.log('[loadCompanies] called');
+      $.get('/api/companies')
+        .done(function(companies) {
+          console.log('[loadCompanies] response:', companies);
+          const rows = (companies || []).map(c => `
+            <tr>
+              <td>${c.id}</td>
+              <td>${c.company_name}</td>
+              <td>${c.employee_count}</td>
+              <td>${c.admin_email || '未設定'}</td>
+            </tr>
+          `);
+          $('#company-list').html(rows.join('') || '<tr><td colspan="4">データなし</td></tr>');
+        })
+        .fail(function() {
+          console.error('[loadCompanies] failed');
+          $('#company-list').html('<tr><td colspan="4">読み込み失敗</td></tr>');
+        });
+    }
 
+
+
+function loadInquiries() {
+  console.log('[loadInquiries] called');
+  $.get('/api/inquiries')
+    .done(function(res) {
+      console.log('[loadInquiries] response:', res);
+      if (res.success && Array.isArray(res.inquiries)) {
+        const rows = res.inquiries.map(q => `
+          <tr>
+            <td>${q.name}</td>
+            <td>${q.email}</td>
+            <td>${q.message}</td>
+            <td>${q.created_at}</td>
+          </tr>
+        `);
+        $('#received-data').html(
+          rows.join('') || '<tr><td colspan="4">データなし</td></tr>'
+        );
+      } else {
+        $('#received-data').html(
+          `<tr><td colspan="4">${res.message || 'データ取得失敗'}</td></tr>`
+        );
+      }
+    })
+    .fail(function(xhr) {
+      console.error('[loadInquiries] failed', xhr);
+      $('#received-data').html('<tr><td colspan="4">読み込み失敗</td></tr>');
+    });
+}
+
+
+
+
+    // パスワード検証
     function verifyPassword() {
-      const input = document.getElementById('access-password').value;
+      const input = $('#access-password').val();
+      console.log('[verifyPassword] called, input:', input, 'vs SERVER_PASSWORD:', SERVER_PASSWORD);
       if (input === SERVER_PASSWORD) {
+        console.log('[verifyPassword] success');
         $('#password-section').hide();
         $('#main-content').fadeIn();
-        loadCompanies();
+        loadCompanies();  // これで会社一覧も更新
       } else {
+        console.warn('[verifyPassword] invalid password');
         $('#auth-error').text('パスワードが正しくありません');
       }
     }
 
-$('#admin-form').on('submit', function(e) {
-  e.preventDefault();
-  const formData = {
-    email: $('input[name="email"]').val(),
-    password: $('input[name="password"]').val(),
-    company_name: $('input[name="company_name"]').val()
-  };
-
-  console.log("📦 送信データ: ", formData);  // ← 追加
-
-  $.ajax({
-    url: '/api/create_admin',
-    type: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify(formData),
-    success: res => {
-      $('#result').html('<div class="alert alert-success">' + res.message + '</div>');
-      loadCompanies();
-    },
-    error: xhr => {
-      const msg = xhr.responseJSON?.message || '作成に失敗しました';
-      $('#result').html('<div class="alert alert-danger">' + msg + '</div>');
-    }
-  });
-});
-
-
-    function loadCompanies() {
-      $.get('/api/companies', function (companies) {
-        const rows = (companies || []).map(c => `
-          <tr>
-            <td>${c.id}</td>
-            <td>${c.company_name}</td>
-            <td>${c.employee_count}</td>
-            <td>${c.admin_email || '未設定'}</td>
-          </tr>
-        `);
-        $('#company-list').html(rows.join('') || '<tr><td colspan="4">データなし</td></tr>');
-      }).fail(() => {
-        $('#company-list').html('<tr><td colspan="4">読み込み失敗</td></tr>');
+    // .env からサーバー側パスワードを取得
+    console.log('[startup] fetching admin key...');
+    $.get('/api/get_admin_key')
+      .done(function(res) {
+        SERVER_PASSWORD = res.key;
+        console.log('[startup] SERVER_PASSWORD set:', SERVER_PASSWORD);
+      })
+      .fail(function() {
+        console.error('[startup] failed to fetch admin key');
       });
-    }
+
+    // ドキュメントレディ
+    $(function() {
+      console.log('[startup] document ready');
+
+      // 初回表示時に企業一覧をロード（パスワード未入力でも見えるように）
+      loadCompanies();
+
+  $('#received-tab').on('click', function() {
+    loadInquiries();
+  });
+
+      // フォーム送信ハンドラ
+      $('#admin-form').on('submit', function(e) {
+        e.preventDefault();
+        const formData = {
+          email:        $('input[name="email"]').val(),
+          password:     $('input[name="password"]').val(),
+          company_name: $('input[name="company_name"]').val()
+        };
+        console.log('[#admin-form] submit, formData:', formData);
+
+        $.ajax({
+          url: '/api/create_admin',
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify(formData)
+        })
+        .done(function(res) {
+          console.log('[#admin-form] success response:', res);
+          $('#result').html(`<div class="alert alert-success">${res.message}</div>`);
+          loadCompanies();
+          updateReceivedData(formData);
+        })
+        .fail(function(xhr) {
+          console.error('[#admin-form] error response:', xhr);
+          const msg = xhr.responseJSON?.message || '作成に失敗しました';
+          $('#result').html(`<div class="alert alert-danger">${msg}</div>`);
+        });
+      });
+    });
   </script>
 </body>
 </html>

@@ -1,13 +1,216 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>ログイン</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>メール署名DX｜メール署名を成果資産に変えるDXサービス</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            background: #f4f6f8;
+        }
+        header {
+            background: #2c3e50;
+            color: #fff;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+        }
+        header h1 {
+            font-size: 1.5rem;
+            margin: 0;
+            white-space: nowrap;
+        }
+        header nav {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        header nav a {
+            color: #ecf0f1;
+            text-decoration: none;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .hero {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: #fff;
+            text-align: center;
+            padding: 4rem 2rem;
+            margin-top: 70px;
+        }
+        .hero h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        .hero p {
+            font-size: 1.2rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        .section {
+            max-width: 900px;
+            margin: 2rem auto;
+            background: #fff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .section h3 {
+            text-align: center;
+            margin-top: 0;
+        }
+        .features ul {
+            list-style: none;
+            padding: 0;
+        }
+        .features li {
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #ddd;
+        }
+        .features li:last-child {
+            border-bottom: none;
+        }
+        .cta-btn {
+            display: inline-block;
+            background: #e67e22;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            text-align: center;
+        }
+        .cta-btn:hover {
+            background: #cf711f;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        form label {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+        form input, form textarea {
+            padding: 0.75rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        form input:focus, form textarea:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 3px rgba(52, 152, 219, 0.5);
+        }
+        form button {
+            padding: 0.75rem;
+            font-size: 1.1rem;
+        }
+        footer {
+            text-align: center;
+            font-size: 0.9rem;
+            padding: 1rem;
+            background: #2c3e50;
+            color: #ccc;
+        }
+        .hidden {
+            display: none;
+        }
+        @media (max-width: 768px) {
+            header {
+                flex-wrap: wrap;
+                padding: 0.5rem 1rem;
+            }
+            header h1 {
+                font-size: 1.2rem;
+            }
+            header nav {
+                gap: 0.5rem;
+                flex-wrap: wrap;
+            }
+            header nav a {
+                font-size: 0.9rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div class="container mt-5">
+    <header>
+        <h1>メール署名DX</h1>
+        <nav>
+            <a href="#features" class="nav-link">機能</a>
+            <a href="#about" class="nav-link">概要</a>
+            <a href="#contact" class="nav-link">資料請求</a>
+            <a href="#login" id="login-btn">ログイン</a>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <h2>「日常メール」から成果を生む、新しい署名管理。</h2>
+        <p>営業・広報・法務…あらゆる部門の署名をデータ資産化し、成果を見える化。リスク管理も同時に実現します。</p>
+        <p><a class="cta-btn" href="#contact">無料資料請求はこちら</a></p>
+    </section>
+
+    <section id="example" class="section">
+        <h3>導入効果例</h3>
+        <ul>
+            <li>海外の導入事例では、署名経由で製品ページのトラフィックが<strong>20%増加</strong>。</li>
+            <li>署名リンクからのランディングページCVRが<strong>15%向上</strong>した企業も。</li>
+            <li>署名の一元管理により、ガイドライン遵守と法務リスクの低減を実現した事例も多数。</li>
+        </ul>
+    </section>
+
+    <section id="features" class="section features">
+        <h3>主な機能とメリット</h3>
+        <ul>
+            <li><strong>営業活動の反応測定</strong>：誰の署名がどれだけクリックされたかを即時把握。</li>
+            <li><strong>部門別・キャンペーン別A/Bテスト</strong>：最適な訴求をデータで検証。</li>
+            <li><strong>ガイドライン遵守管理</strong>：リスクを減らす統一運用。</li>
+            <li><strong>サポートリンク分析</strong>：顧客の行動データから改善点発見。</li>
+            <li><strong>全社統一署名で信頼性向上</strong>：ブランドイメージを統一。</li>
+        </ul>
+    </section>
+
+    <section id="about" class="section">
+        <h3>サービス概要</h3>
+        <p>メール署名DXは、全社の署名を一元管理・分析し、日常のメールを成果資産に変えるサービスです。  
+        営業成果の可視化、ガイドライン遵守、反応データの蓄積で、次の一手を見つける武器になります。</p>
+    </section>
+
+    <section id="contact" class="section">
+        <h3>無料資料請求・お問い合わせ</h3>
+        <form id="inquiry-form" style="max-width: 600px; margin: 0 auto;">
+            <label for="name">お名前</label>
+            <input type="text" id="name" name="name" placeholder="例：山田 太郎" required />
+
+            <label for="email">メールアドレス</label>
+            <input type="email" id="email" name="email" placeholder="例：taro@example.com" required />
+
+            <label for="message">お問い合わせ内容</label>
+            <textarea id="message" name="message" placeholder="ご相談内容をご記入ください" rows="5" required></textarea>
+
+            <button type="submit" class="cta-btn" style="width: 100%;">送信</button>
+        </form>
+        <div id="inquiry-result" class="mt-3"></div>
+    </section>
+
+    <section id="login" class="section hidden">
+        <h3>ログイン</h3>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -15,26 +218,71 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-        <h1>ログイン</h1>
-        <form method="POST" action="{{ url_for('auth') }}">
-            {{ form.hidden_tag() }} <!-- CSRF トークンを含む隠しフィールド -->
+        <form method="POST" action="{{ url_for('auth') }}" style="max-width: 600px; margin: 0 auto;">
+            {{ form.hidden_tag() }}
             <div class="mb-3">
-                <label for="email" class="form-label">メールアドレス</label>
-                {{ form.email(class="form-control", id="email") }}
-                {% for error in form.email.errors %}
-                    <div class="text-danger">{{ error }}</div>
-                {% endfor %}
+                <label for="login-email" class="form-label">メールアドレス</label>
+                {{ form.email(class="form-control", id="login-email") }}
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">パスワード</label>
                 {{ form.password(class="form-control", id="password") }}
-                {% for error in form.password.errors %}
-                    <div class="text-danger">{{ error }}</div>
-                {% endfor %}
             </div>
-            {{ form.submit(class="btn btn-primary") }}
+            {{ form.submit(class="btn btn-primary cta-btn", style="width: 100%;") }}
         </form>
-    </div>
+    </section>
+
+    <footer>
+        © 2025 メール署名DX ｜ <a href="/company-info" style="color: #ccc;">会社情報</a>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 問い合わせフォーム送信を AJAX(JSON) で行う
+        document.getElementById('inquiry-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const payload = {
+                name:    document.getElementById('name').value.trim(),
+                email:   document.getElementById('email').value.trim(),
+                message: document.getElementById('message').value.trim()
+            };
+            const resultEl = document.getElementById('inquiry-result');
+            try {
+                const res = await fetch('/api/inquiries', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                    resultEl.innerHTML = '<div class="alert alert-success">お問い合わせを受け付けました。</div>';
+                    this.reset();
+                } else {
+                    resultEl.innerHTML = '<div class="alert alert-danger">エラー：' + (json.message || res.statusText) + '</div>';
+                }
+            } catch (err) {
+                resultEl.innerHTML = '<div class="alert alert-danger">サーバーエラーが発生しました。</div>';
+            }
+        });
+
+        // ログイン表示切替
+        document.getElementById('login-btn').addEventListener('click', function(e) {
+            e.preventDefault();
+            ['example','features','about','contact'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById('login').classList.remove('hidden');
+            document.getElementById('login').scrollIntoView({ behavior: 'smooth' });
+        });
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                ['example','features','about','contact'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+                document.getElementById('login').classList.add('hidden');
+                document.getElementById(this.getAttribute('href').substring(1)).scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+    </script>
 </body>
 </html>

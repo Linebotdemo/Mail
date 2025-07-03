@@ -21,12 +21,26 @@ import secrets
 from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
 import re
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template
+
 
 # Flask アプリケーションの初期化
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
 csrf = CSRFProtect(app)
 app.config['WTF_CSRF_ENABLED'] = True  # CSRFを有効化（必要に応じてエンドポイントで無効化）
+# 設定例
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///database.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+
+
+
 
 # ログ設定
 logging.basicConfig(
@@ -35,6 +49,8 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] (%(pathname)s:%(lineno)d) %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
 
 # データベース設定
 DATABASE = 'database.db'
@@ -225,6 +241,18 @@ def init_db():
                 )
             ''')
 
+    # 12. inquiries テーブル
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS inquiries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+
             # organization_id カラムの存在確認と追加
             for table in ['users', 'employees', 'templates', 'campaigns', 'signature_history',
                           'tracking', 'signature_assignments', 'analytics', 'signature_templates',
@@ -245,6 +273,10 @@ def init_db():
             raise
         finally:
             db.close()
+
+with app.app_context():
+    init_db()
+
 
 # ログインフォームクラス
 class LoginForm(FlaskForm):
@@ -566,24 +598,29 @@ def login():
         email = data.get('email')
         password = data.get('password')
         if not email or not password:
-            logging.warning(f'⚠️ Missing email or password: {email}')
             return jsonify({'success': False, 'message': 'メールとパスワードを入力してください'}), 400
+
         db = get_db()
-        try:
-            cursor = db.cursor()
-            cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
-            user = cursor.fetchone()
-            if user and check_password_hash(user['password'], password):
-                user_obj = User(user['id'], user['email'], user['role'], user['employee_id'], organization_id=user['organization_id'])
-                login_user(user_obj)
-                logging.info(f'✅ Login successful: {email}')
-                return jsonify({'success': True, 'redirect': '/'})
-            logging.warning(f'⚠️ Login failed: {email}')
-            return jsonify({'success': False, 'message': '無効な認証情報です。'}), 401
-        finally:
-            db.close()
-    except Exception as e:
-        logging.exception(f'❌ Login error: {e}')
+        cursor = db.cursor()
+        cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
+        user = cursor.fetchone()
+        db.close()
+
+        if user and check_password_hash(user['password'], password):
+            user_obj = User(
+                user['id'],
+                user['email'],
+                user['role'],
+                user['employee_id'],
+                organization_id=user['organization_id']
+            )
+            login_user(user_obj)
+            return jsonify({'success': True, 'redirect': url_for('index')})
+
+        return jsonify({'success': False, 'message': '無効な認証情報です。'}), 401
+
+    except Exception:
+        logging.exception('❌ Login error')
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました。'}), 500
 
 @app.route('/api/logout', methods=['POST'])
@@ -2339,8 +2376,78 @@ def api_get_campaign_analytics():
 
 
 
+@app.route('/api/inquiries', methods=['POST'])
+@csrf.exempt
+def create_inquiry():
+    # JSON か フォーム送信 か を判定
+    if request.content_type and 'application/json' in request.content_type:
+        data = request.get_json(force=True) or {}
+    else:
+        data = {
+            'name':    request.form.get('name', '').strip(),
+            'email':   request.form.get('email', '').strip(),
+            'message': request.form.get('message', '').strip(),
+        }
+
+    name    = data.get('name', '')
+    email   = data.get('email', '')
+    message = data.get('message', '')
+
+    # バリデーション
+    if not (name and email and message):
+        if request.content_type and 'application/json' in request.content_type:
+            return jsonify({'success': False, 'message': 'すべての項目を入力してください'}), 400
+        else:
+            flash('すべての項目を入力してください', 'danger')
+            return redirect(url_for('index'))  # HP.html を "/" で返す場合は index → 変更してください
+
+    # DB に保存
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute('''
+            INSERT INTO inquiries (name, email, message)
+            VALUES (?, ?, ?)
+        ''', (name, email, message))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        if 'application/json' in request.content_type:
+            return jsonify({'success': False, 'message': str(e)}), 500
+        else:
+            flash('送信に失敗しました', 'danger')
+            return redirect(url_for('index'))
+    finally:
+        db.close()
+
+    # JSON リクエストなら JSON で返す
+    if 'application/json' in request.content_type:
+        return jsonify({'success': True, 'message': 'お問い合わせを受け付けました'}), 200
+
+    # フォーム送信なら 管理者ページ に飛ばす
+    flash('お問い合わせを受け付けました', 'success')
+    return redirect(url_for('admin_create_page'))
 
 
+
+
+@app.route('/api/inquiries', methods=['GET'])
+def list_inquiries():
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute('''
+            SELECT id, name, email, message, created_at
+            FROM inquiries
+            ORDER BY created_at DESC
+        ''')
+        rows = cursor.fetchall()
+        inquiries = [dict(row) for row in rows]
+        return jsonify({'success': True, 'inquiries': inquiries}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
 
 
 

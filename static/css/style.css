@@ -201,4 +201,67 @@ $('#profile-editor .container').css({
   opacity: 1;
 }
 
+/* LP用スタイル */
+.lp-header {
+    background: #2c3e50;
+    color: #fff;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.lp-header h1 {
+    font-size: 1.5rem;
+    margin: 0;
+}
+.lp-header a {
+    color: #ecf0f1;
+    text-decoration: none;
+    font-weight: bold;
+}
+.lp-hero {
+    padding: 4rem 2rem;
+    text-align: center;
+    background: #3498db;
+    color: #fff;
+}
+.lp-hero h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+.lp-hero p {
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+}
+.lp-cta-btn {
+    background: #e67e22;
+    color: #fff;
+    padding: 0.75rem 1.5rem;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+}
+.lp-features {
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+.lp-features ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.lp-features li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #ddd;
+}
+.lp-footer {
+    text-align: center;
+    font-size: 0.9rem;
+    padding: 1rem;
+    color: #777;
+}
 
