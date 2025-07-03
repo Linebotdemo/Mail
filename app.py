@@ -34,8 +34,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///dat
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
 
 
