@@ -80,7 +80,7 @@ def init_db():
                 )
             ''')
 
-            # 2. users テーブル
+# 2. users テーブル
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,8 +89,9 @@ def init_db():
                     role TEXT NOT NULL DEFAULT 'employee',
                     employee_id INTEGER,
                     organization_id INTEGER NOT NULL,
+                    is_blocked INTEGER NOT NULL DEFAULT 0,
                     FOREIGN KEY (organization_id) REFERENCES organizations(id)
-                )
+                   )
             ''')
 
             # 3. employees テーブル
@@ -571,20 +572,25 @@ def auth():
                 cursor = db.cursor()
                 cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
                 user = cursor.fetchone()
-                if user and check_password_hash(user['password'], password):
-                    user_obj = User(user['id'], user['email'], user['role'], user['employee_id'], organization_id=user['organization_id'])
-                    login_user(user_obj)
-                    session['user_id'] = user['id']
-                    logging.info(f'✅ Login successful: {email}')
-                    next_page = request.args.get('next', url_for('index'))
-                    return redirect(next_page)
-                else:
-                    logging.warning(f'⚠️ Login failed: {email}')
-                    flash('無効なメールアドレスまたはパスワードです。', 'danger')
+                if user:
+                    if int(user['is_blocked']) == 1:
+                        logging.warning(f'⚠️ Login blocked: {email}')
+                        flash('このアカウントはブロックされています。', 'danger')
+                        return redirect(url_for('auth'))
+                    if check_password_hash(user['password'], password):
+                        user_obj = User(user['id'], user['email'], user['role'], user['employee_id'], organization_id=user['organization_id'])
+                        login_user(user_obj)
+                        session['user_id'] = user['id']
+                        logging.info(f'✅ Login successful: {email}')
+                        next_page = request.args.get('next', url_for('index'))
+                        return redirect(next_page)
+                logging.warning(f'⚠️ Login failed: {email}')
+                flash('無効なメールアドレスまたはパスワードです。', 'danger')
             finally:
                 db.close()
     logging.info('🔵 Rendering auth page')
     return render_template('auth.html', form=form)
+
 
 @app.route('/api/login', methods=['POST'])
 @csrf.exempt
@@ -593,6 +599,7 @@ def login():
         data = request.get_json(force=True)
         email = data.get('email')
         password = data.get('password')
+        
         if not email or not password:
             return jsonify({'success': False, 'message': 'メールとパスワードを入力してください'}), 400
 
@@ -602,7 +609,17 @@ def login():
         user = cursor.fetchone()
         db.close()
 
-        if user and check_password_hash(user['password'], password):
+        if not user:
+            return jsonify({'success': False, 'message': '無効な認証情報です。'}), 401
+
+        # is_blocked の値を確認して判定（型に注意）
+        is_blocked = int(user['is_blocked']) if user['is_blocked'] is not None else 0
+        logging.info(f"[LOGIN] is_blocked: {is_blocked} (type: {type(is_blocked)})")
+
+        if is_blocked == 1:
+            return jsonify({'success': False, 'message': 'このアカウントはブロックされています'}), 403
+
+        if check_password_hash(user['password'], password):
             user_obj = User(
                 user['id'],
                 user['email'],
@@ -618,6 +635,8 @@ def login():
     except Exception:
         logging.exception('❌ Login error')
         return jsonify({'success': False, 'message': 'サーバーエラーが発生しました。'}), 500
+
+
 
 @app.route('/api/logout', methods=['POST'])
 @login_required
@@ -2185,14 +2204,17 @@ def get_admin_key():
 
 
 @app.route('/api/companies', methods=['GET'])
-def get_company_list():  # ← 別名にする
+def get_company_list():
     db = get_db()
     try:
         cursor = db.cursor()
         cursor.execute("""
-            SELECT o.id, o.name AS company_name,
-                   COUNT(e.id) AS employee_count,
-                   (SELECT u.email FROM users u WHERE u.organization_id = o.id AND u.role = 'admin' LIMIT 1) AS admin_email
+            SELECT 
+                o.id, 
+                o.name AS company_name,
+                COUNT(e.id) AS employee_count,
+                (SELECT u.email FROM users u WHERE u.organization_id = o.id AND u.role = 'admin' LIMIT 1) AS admin_email,
+                (SELECT u.id FROM users u WHERE u.organization_id = o.id AND u.role = 'admin' LIMIT 1) AS admin_id
             FROM organizations o
             LEFT JOIN employees e ON e.organization_id = o.id
             GROUP BY o.id
@@ -2205,6 +2227,8 @@ def get_company_list():  # ← 別名にする
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
+
+
 
 
 
@@ -2446,6 +2470,47 @@ def list_inquiries():
         db.close()
 
 
+@app.route('/api/users/<int:user_id>/block', methods=['POST'])
+@csrf.exempt
+def block_user(user_id):
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute('SELECT id FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'message': 'ユーザーが見つかりません'}), 404
+
+        cursor.execute('UPDATE users SET is_blocked = 1 WHERE id = ?', (user_id,))
+        db.commit()
+        return jsonify({'success': True, 'message': 'ユーザーをブロックしました'})
+    except Exception as e:
+        import logging
+        logging.exception('❌ block_user error:')
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/users/<int:user_id>/unblock', methods=['POST'])
+@csrf.exempt
+def unblock_user(user_id):
+    db = get_db()
+    try:
+        cursor = db.cursor()
+        cursor.execute('SELECT id FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            return jsonify({'success': False, 'message': 'ユーザーが見つかりません'}), 404
+
+        cursor.execute('UPDATE users SET is_blocked = 0 WHERE id = ?', (user_id,))
+        db.commit()
+        return jsonify({'success': True, 'message': 'ユーザーのブロックを解除しました'})
+    except Exception as e:
+        import logging
+        logging.exception('❌ unblock_user error:')
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
 
 
 

@@ -50,17 +50,20 @@
       <!-- 企業一覧 -->
       <div class="tab-pane fade show active" id="companies" role="tabpanel">
         <table class="table table-bordered">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>企業名</th>
-              <th>従業員数</th>
-              <th>管理者メール</th>
-            </tr>
-          </thead>
-          <tbody id="company-list">
-            <tr><td colspan="4">読み込み中...</td></tr>
-          </tbody>
+<thead>
+  <tr>
+    <th>ID</th>
+    <th>企業名</th>
+    <th>従業員数</th>
+    <th>管理者メール</th>
+    <th>操作</th>
+  </tr>
+</thead>
+
+<tbody id="company-list">
+  <tr><td colspan="4">読み込み中...</td></tr>
+</tbody>
+
         </table>
       </div>
       <!-- 受信データ -->
@@ -93,26 +96,62 @@
     let SERVER_PASSWORD = "";
 
     // グローバル関数: 企業一覧取得
-    function loadCompanies() {
-      console.log('[loadCompanies] called');
-      $.get('/api/companies')
-        .done(function(companies) {
-          console.log('[loadCompanies] response:', companies);
-          const rows = (companies || []).map(c => `
-            <tr>
-              <td>${c.id}</td>
-              <td>${c.company_name}</td>
-              <td>${c.employee_count}</td>
-              <td>${c.admin_email || '未設定'}</td>
-            </tr>
-          `);
-          $('#company-list').html(rows.join('') || '<tr><td colspan="4">データなし</td></tr>');
-        })
-        .fail(function() {
-          console.error('[loadCompanies] failed');
-          $('#company-list').html('<tr><td colspan="4">読み込み失敗</td></tr>');
-        });
-    }
+function loadCompanies() {
+  console.log('[loadCompanies] called');
+  $.get('/api/companies')
+    .done(function(companies) {
+      console.log('[loadCompanies] response:', companies);
+      const rows = (companies || []).map(c => `
+        <tr>
+          <td>${c.id}</td>
+          <td>${c.company_name}</td>
+          <td>${c.employee_count}</td>
+          <td>${c.admin_email || '未設定'}</td>
+          <td>
+            <button class="btn btn-sm btn-danger" onclick="blockUser(${c.admin_id})">ブロック</button>
+            <button class="btn btn-sm btn-success" onclick="unblockUser(${c.admin_id})">解除</button>
+          </td>
+        </tr>
+      `);
+      $('#company-list').html(
+        rows.join('') || '<tr><td colspan="5">データなし</td></tr>'
+      );
+    })
+    .fail(function() {
+      console.error('[loadCompanies] failed');
+      $('#company-list').html('<tr><td colspan="5">読み込み失敗</td></tr>');
+    });
+}
+
+function blockUser(userId) {
+  if (!userId) {
+    alert('ユーザーIDが不正です');
+    return;
+  }
+  $.post(`/api/users/${userId}/block`)
+    .done(res => {
+      alert(res.message);
+      loadCompanies();
+    })
+    .fail(() => {
+      alert('ブロックに失敗しました');
+    });
+}
+
+function unblockUser(userId) {
+  if (!userId) {
+    alert('ユーザーIDが不正です');
+    return;
+  }
+  $.post(`/api/users/${userId}/unblock`)
+    .done(res => {
+      alert(res.message);
+      loadCompanies();
+    })
+    .fail(() => {
+      alert('解除に失敗しました');
+    });
+}
 
 
 
