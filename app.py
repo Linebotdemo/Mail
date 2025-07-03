@@ -21,9 +21,7 @@ import secrets
 from urllib.parse import urlparse, parse_qs
 from bs4 import BeautifulSoup
 import re
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-from flask import Flask, render_template
+
 
 
 # Flask アプリケーションの初期化
